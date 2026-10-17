@@ -8,26 +8,18 @@ models, latencies from `docs/PROTOCOL.md`, still PROPOSED). Host numbers are **a
 
 | design | op | clocks | words in | bytes out | source |
 |---|---|---|---|---|---|
-| A | ntt | 2,696 | 1,792 | 2,688 | simulated |
-| A | invntt | 2,696 | 1,792 | 2,688 | simulated |
-| A | scale | 775 | 256 | 384 | simulated |
-| A | basemul | 1,930 | 512 | 384 | simulated |
-| A-par | ntt | 2,694 | 1,792 | 2,688 | simulated |
-| A-par | invntt | 2,694 | 1,792 | 2,688 | simulated |
-| A-par | scale | 390 | 256 | 384 | simulated |
-| A-par | basemul | 650 | 512 | 384 | simulated |
+| A | ntt | 2,694 | 1,792 | 2,688 | simulated |
+| A | invntt | 2,695 | 1,792 | 2,688 | simulated |
+| A | scale | 774 | 256 | 384 | simulated |
+| A | basemul | 1,928 | 512 | 384 | simulated |
 | B1 | ntt | 4,096 | 544 | 768 | simulated |
 | B1 | invntt | 4,096 | 544 | 768 | simulated |
-| B1 | scale | 776 | 257 | 384 | simulated |
-| B1 | basemul | 1,931 | 513 | 384 | simulated |
-| B2 | ntt | 2,304 | 544 | 768 | simulated |
-| B2 | invntt | 2,304 | 544 | 768 | simulated |
-| B2 | scale | 391 | 257 | 384 | simulated |
-| B2 | basemul | 651 | 513 | 384 | simulated |
+| B1 | scale | 775 | 257 | 384 | simulated |
+| B1 | basemul | 1,929 | 513 | 384 | simulated |
 | B3 | ntt | 950 | 544 | 768 | ASSUMPTION |
 | B3 | invntt | 950 | 544 | 768 | ASSUMPTION |
-| B3 | scale | 391 | 257 | 384 | simulated |
-| B3 | basemul | 651 | 513 | 384 | simulated |
+| B3 | scale | 775 | 257 | 384 | simulated |
+| B3 | basemul | 1,929 | 513 | 384 | simulated |
 
 ## Chip calls per ML-KEM operation (from model/mlkem.py)
 
@@ -44,176 +36,116 @@ models, latencies from `docs/PROTOCOL.md`, still PROPOSED). Host numbers are **a
 
 | param set | op | design | total | pins | chip compute | host xfer | host book | host rest | SW baseline | speedup | coprocessor bottleneck |
 |---|---|---|---|---|---|---|---|---|---|---|---|
-| ML-KEM-512 | keygen | A | 4,596 | 1,280 | 570 | 0 | 546 | 2,200 | 2,616 | 0.57× | pin transfer |
-| ML-KEM-512 | keygen | A-par | 4,083 | 1,280 | 58 | 0 | 546 | 2,200 | 2,616 | 0.64× | pin transfer |
-| ML-KEM-512 | keygen | B1 | 4,815 | 512 | 1,898 | 0 | 205 | 2,200 | 2,616 | 0.54× | chip compute |
-| ML-KEM-512 | keygen | B2 | 3,586 | 512 | 670 | 0 | 205 | 2,200 | 2,616 | 0.73× | chip compute |
-| ML-KEM-512 | keygen | B3 | 3,045 | 512 | 128 | 0 | 205 | 2,200 | 2,616 | 0.86× | pin transfer |
-| ML-KEM-512 | encaps | A | 5,646 | 1,766 | 972 | 0 | 751 | 2,157 | 2,606 | 0.46× | pin transfer |
-| ML-KEM-512 | encaps | A-par | 4,762 | 1,766 | 88 | 0 | 751 | 2,157 | 2,606 | 0.55× | pin transfer |
-| ML-KEM-512 | encaps | B1 | 5,921 | 807 | 2,632 | 0 | 324 | 2,157 | 2,606 | 0.44× | chip compute |
-| ML-KEM-512 | encaps | B2 | 4,141 | 807 | 853 | 0 | 324 | 2,157 | 2,606 | 0.63× | chip compute |
-| ML-KEM-512 | encaps | B3 | 3,464 | 807 | 176 | 0 | 324 | 2,157 | 2,606 | 0.75× | pin transfer |
-| ML-KEM-512 | decaps | A | 7,415 | 2,714 | 1,297 | 0 | 1,161 | 2,244 | 2,854 | 0.38× | pin transfer |
-| ML-KEM-512 | decaps | A-par | 6,236 | 2,714 | 118 | 0 | 1,161 | 2,244 | 2,854 | 0.46× | pin transfer |
-| ML-KEM-512 | decaps | B1 | 7,854 | 1,178 | 3,954 | 0 | 478 | 2,244 | 2,854 | 0.36× | chip compute |
-| ML-KEM-512 | decaps | B2 | 5,242 | 1,178 | 1,342 | 0 | 478 | 2,244 | 2,854 | 0.54× | chip compute |
-| ML-KEM-512 | decaps | B3 | 4,159 | 1,178 | 259 | 0 | 478 | 2,244 | 2,854 | 0.69× | pin transfer |
-| ML-KEM-768 | keygen | A | 7,796 | 2,074 | 1,281 | 0 | 870 | 3,571 | 4,281 | 0.55× | pin transfer |
-| ML-KEM-768 | keygen | A-par | 6,643 | 2,074 | 128 | 0 | 870 | 3,571 | 4,281 | 0.64× | pin transfer |
-| ML-KEM-768 | keygen | B1 | 8,125 | 922 | 3,273 | 0 | 358 | 3,571 | 4,281 | 0.53× | chip compute |
-| ML-KEM-768 | keygen | B2 | 5,898 | 922 | 1,046 | 0 | 358 | 3,571 | 4,281 | 0.73× | chip compute |
-| ML-KEM-768 | keygen | B3 | 5,085 | 922 | 233 | 0 | 358 | 3,571 | 4,281 | 0.84× | pin transfer |
-| ML-KEM-768 | encaps | A | 9,283 | 2,650 | 1,864 | 0 | 1,109 | 3,661 | 4,392 | 0.47× | pin transfer |
-| ML-KEM-768 | encaps | A-par | 7,592 | 2,650 | 172 | 0 | 1,109 | 3,661 | 4,392 | 0.58× | pin transfer |
-| ML-KEM-768 | encaps | B1 | 9,668 | 1,307 | 4,188 | 0 | 512 | 3,661 | 4,392 | 0.45× | chip compute |
-| ML-KEM-768 | encaps | B2 | 6,723 | 1,307 | 1,244 | 0 | 512 | 3,661 | 4,392 | 0.65× | pin transfer |
-| ML-KEM-768 | encaps | B3 | 5,776 | 1,307 | 296 | 0 | 512 | 3,661 | 4,392 | 0.76× | pin transfer |
-| ML-KEM-768 | decaps | A | 11,678 | 3,917 | 2,331 | 0 | 1,655 | 3,774 | 4,719 | 0.40× | pin transfer |
-| ML-KEM-768 | decaps | A-par | 9,563 | 3,917 | 217 | 0 | 1,655 | 3,774 | 4,719 | 0.49× | pin transfer |
-| ML-KEM-768 | decaps | B1 | 12,281 | 1,806 | 5,984 | 0 | 717 | 3,774 | 4,719 | 0.38× | chip compute |
-| ML-KEM-768 | decaps | B2 | 8,197 | 1,806 | 1,900 | 0 | 717 | 3,774 | 4,719 | 0.58× | chip compute |
-| ML-KEM-768 | decaps | B3 | 6,708 | 1,806 | 411 | 0 | 717 | 3,774 | 4,719 | 0.70× | pin transfer |
+| ML-KEM-512 | keygen | A | 4,808 | 1,280 | 569 | 0 | 546 | 2,413 | 2,616 | 0.54× | pin transfer |
+| ML-KEM-512 | keygen | B1 | 5,028 | 512 | 1,898 | 0 | 205 | 2,413 | 2,616 | 0.52× | chip compute |
+| ML-KEM-512 | keygen | B3 | 3,770 | 512 | 639 | 0 | 205 | 2,413 | 2,616 | 0.69× | chip compute |
+| ML-KEM-512 | encaps | A | 5,839 | 1,766 | 970 | 0 | 751 | 2,352 | 2,606 | 0.45× | pin transfer |
+| ML-KEM-512 | encaps | B1 | 6,114 | 807 | 2,631 | 0 | 324 | 2,352 | 2,606 | 0.43× | chip compute |
+| ML-KEM-512 | encaps | B3 | 4,541 | 807 | 1,058 | 0 | 324 | 2,352 | 2,606 | 0.57× | chip compute |
+| ML-KEM-512 | decaps | A | 7,630 | 2,714 | 1,294 | 0 | 1,161 | 2,462 | 2,854 | 0.37× | pin transfer |
+| ML-KEM-512 | decaps | B1 | 8,070 | 1,178 | 3,952 | 0 | 478 | 2,462 | 2,854 | 0.35× | chip compute |
+| ML-KEM-512 | decaps | B3 | 5,553 | 1,178 | 1,435 | 0 | 478 | 2,462 | 2,854 | 0.51× | chip compute |
+| ML-KEM-768 | keygen | A | 8,166 | 2,074 | 1,278 | 0 | 870 | 3,944 | 4,281 | 0.52× | pin transfer |
+| ML-KEM-768 | keygen | B1 | 8,496 | 922 | 3,271 | 0 | 358 | 3,944 | 4,281 | 0.50× | chip compute |
+| ML-KEM-768 | keygen | B3 | 6,609 | 922 | 1,384 | 0 | 358 | 3,944 | 4,281 | 0.65× | chip compute |
+| ML-KEM-768 | encaps | A | 9,615 | 2,650 | 1,860 | 0 | 1,109 | 3,996 | 4,392 | 0.46× | pin transfer |
+| ML-KEM-768 | encaps | B1 | 10,000 | 1,307 | 4,185 | 0 | 512 | 3,996 | 4,392 | 0.44× | chip compute |
+| ML-KEM-768 | encaps | B3 | 7,798 | 1,307 | 1,983 | 0 | 512 | 3,996 | 4,392 | 0.56× | chip compute |
+| ML-KEM-768 | decaps | A | 12,033 | 3,917 | 2,326 | 0 | 1,655 | 4,135 | 4,719 | 0.39× | pin transfer |
+| ML-KEM-768 | decaps | B1 | 12,638 | 1,806 | 5,980 | 0 | 717 | 4,135 | 4,719 | 0.37× | chip compute |
+| ML-KEM-768 | decaps | B3 | 9,178 | 1,806 | 2,520 | 0 | 717 | 4,135 | 4,719 | 0.51× | chip compute |
 
 ## Ideal PIO lockstep, f_chip = 25 MHz
 
 | param set | op | design | total | pins | chip compute | host xfer | host book | host rest | SW baseline | speedup | coprocessor bottleneck |
 |---|---|---|---|---|---|---|---|---|---|---|---|
-| ML-KEM-512 | keygen | A | 3,486 | 512 | 228 | 0 | 546 | 2,200 | 2,616 | 0.75× | host bookkeeping |
-| ML-KEM-512 | keygen | A-par | 3,281 | 512 | 23 | 0 | 546 | 2,200 | 2,616 | 0.80× | host bookkeeping |
-| ML-KEM-512 | keygen | B1 | 3,369 | 205 | 759 | 0 | 205 | 2,200 | 2,616 | 0.78× | chip compute |
-| ML-KEM-512 | keygen | B2 | 2,877 | 205 | 268 | 0 | 205 | 2,200 | 2,616 | 0.91× | chip compute |
-| ML-KEM-512 | keygen | B3 | 2,660 | 205 | 51 | 0 | 205 | 2,200 | 2,616 | 0.98× | pin transfer |
-| ML-KEM-512 | encaps | A | 4,003 | 707 | 389 | 0 | 751 | 2,157 | 2,606 | 0.65× | host bookkeeping |
-| ML-KEM-512 | encaps | A-par | 3,650 | 707 | 35 | 0 | 751 | 2,157 | 2,606 | 0.71× | host bookkeeping |
-| ML-KEM-512 | encaps | B1 | 3,857 | 323 | 1,053 | 0 | 324 | 2,157 | 2,606 | 0.68× | chip compute |
-| ML-KEM-512 | encaps | B2 | 3,145 | 323 | 341 | 0 | 324 | 2,157 | 2,606 | 0.83× | chip compute |
-| ML-KEM-512 | encaps | B3 | 2,874 | 323 | 70 | 0 | 324 | 2,157 | 2,606 | 0.91× | host bookkeeping |
-| ML-KEM-512 | decaps | A | 5,009 | 1,085 | 519 | 0 | 1,161 | 2,244 | 2,854 | 0.57× | host bookkeeping |
-| ML-KEM-512 | decaps | A-par | 4,537 | 1,085 | 47 | 0 | 1,161 | 2,244 | 2,854 | 0.63× | host bookkeeping |
-| ML-KEM-512 | decaps | B1 | 4,775 | 471 | 1,581 | 0 | 478 | 2,244 | 2,854 | 0.60× | chip compute |
-| ML-KEM-512 | decaps | B2 | 3,730 | 471 | 537 | 0 | 478 | 2,244 | 2,854 | 0.77× | chip compute |
-| ML-KEM-512 | decaps | B3 | 3,297 | 471 | 104 | 0 | 478 | 2,244 | 2,854 | 0.87× | host bookkeeping |
-| ML-KEM-768 | keygen | A | 5,783 | 829 | 512 | 0 | 870 | 3,571 | 4,281 | 0.74× | host bookkeeping |
-| ML-KEM-768 | keygen | A-par | 5,322 | 829 | 51 | 0 | 870 | 3,571 | 4,281 | 0.80× | host bookkeeping |
-| ML-KEM-768 | keygen | B1 | 5,608 | 369 | 1,309 | 0 | 358 | 3,571 | 4,281 | 0.76× | chip compute |
-| ML-KEM-768 | keygen | B2 | 4,717 | 369 | 418 | 0 | 358 | 3,571 | 4,281 | 0.91× | chip compute |
-| ML-KEM-768 | keygen | B3 | 4,392 | 369 | 93 | 0 | 358 | 3,571 | 4,281 | 0.97× | pin transfer |
-| ML-KEM-768 | encaps | A | 6,576 | 1,060 | 745 | 0 | 1,109 | 3,661 | 4,392 | 0.67× | host bookkeeping |
-| ML-KEM-768 | encaps | A-par | 5,899 | 1,060 | 69 | 0 | 1,109 | 3,661 | 4,392 | 0.74× | host bookkeeping |
-| ML-KEM-768 | encaps | B1 | 6,371 | 523 | 1,675 | 0 | 512 | 3,661 | 4,392 | 0.69× | chip compute |
-| ML-KEM-768 | encaps | B2 | 5,193 | 523 | 497 | 0 | 512 | 3,661 | 4,392 | 0.85× | pin transfer |
-| ML-KEM-768 | encaps | B3 | 4,814 | 523 | 118 | 0 | 512 | 3,661 | 4,392 | 0.91× | pin transfer |
-| ML-KEM-768 | decaps | A | 7,929 | 1,567 | 933 | 0 | 1,655 | 3,774 | 4,719 | 0.60× | host bookkeeping |
-| ML-KEM-768 | decaps | A-par | 7,083 | 1,567 | 87 | 0 | 1,655 | 3,774 | 4,719 | 0.67× | host bookkeeping |
-| ML-KEM-768 | decaps | B1 | 7,607 | 723 | 2,394 | 0 | 717 | 3,774 | 4,719 | 0.62× | chip compute |
-| ML-KEM-768 | decaps | B2 | 5,973 | 723 | 760 | 0 | 717 | 3,774 | 4,719 | 0.79× | chip compute |
-| ML-KEM-768 | decaps | B3 | 5,378 | 723 | 164 | 0 | 717 | 3,774 | 4,719 | 0.88× | pin transfer |
+| ML-KEM-512 | keygen | A | 3,699 | 512 | 228 | 0 | 546 | 2,413 | 2,616 | 0.71× | host bookkeeping |
+| ML-KEM-512 | keygen | B1 | 3,582 | 205 | 759 | 0 | 205 | 2,413 | 2,616 | 0.73× | chip compute |
+| ML-KEM-512 | keygen | B3 | 3,079 | 205 | 256 | 0 | 205 | 2,413 | 2,616 | 0.85× | chip compute |
+| ML-KEM-512 | encaps | A | 4,197 | 707 | 388 | 0 | 751 | 2,352 | 2,606 | 0.62× | host bookkeeping |
+| ML-KEM-512 | encaps | B1 | 4,051 | 323 | 1,052 | 0 | 324 | 2,352 | 2,606 | 0.64× | chip compute |
+| ML-KEM-512 | encaps | B3 | 3,422 | 323 | 423 | 0 | 324 | 2,352 | 2,606 | 0.76× | chip compute |
+| ML-KEM-512 | decaps | A | 5,226 | 1,085 | 518 | 0 | 1,161 | 2,462 | 2,854 | 0.55× | host bookkeeping |
+| ML-KEM-512 | decaps | B1 | 4,992 | 471 | 1,581 | 0 | 478 | 2,462 | 2,854 | 0.57× | chip compute |
+| ML-KEM-512 | decaps | B3 | 3,985 | 471 | 574 | 0 | 478 | 2,462 | 2,854 | 0.72× | chip compute |
+| ML-KEM-768 | keygen | A | 6,155 | 829 | 511 | 0 | 870 | 3,944 | 4,281 | 0.70× | host bookkeeping |
+| ML-KEM-768 | keygen | B1 | 5,980 | 369 | 1,308 | 0 | 358 | 3,944 | 4,281 | 0.72× | chip compute |
+| ML-KEM-768 | keygen | B3 | 5,225 | 369 | 553 | 0 | 358 | 3,944 | 4,281 | 0.82× | chip compute |
+| ML-KEM-768 | encaps | A | 6,909 | 1,060 | 744 | 0 | 1,109 | 3,996 | 4,392 | 0.64× | host bookkeeping |
+| ML-KEM-768 | encaps | B1 | 6,705 | 523 | 1,674 | 0 | 512 | 3,996 | 4,392 | 0.65× | chip compute |
+| ML-KEM-768 | encaps | B3 | 5,824 | 523 | 793 | 0 | 512 | 3,996 | 4,392 | 0.75× | chip compute |
+| ML-KEM-768 | decaps | A | 8,287 | 1,567 | 930 | 0 | 1,655 | 4,135 | 4,719 | 0.57× | host bookkeeping |
+| ML-KEM-768 | decaps | B1 | 7,966 | 723 | 2,392 | 0 | 717 | 4,135 | 4,719 | 0.59× | chip compute |
+| ML-KEM-768 | decaps | B3 | 6,582 | 723 | 1,008 | 0 | 717 | 4,135 | 4,719 | 0.72× | chip compute |
 
 ## Ideal PIO lockstep, f_chip = 50 MHz
 
 | param set | op | design | total | pins | chip compute | host xfer | host book | host rest | SW baseline | speedup | coprocessor bottleneck |
 |---|---|---|---|---|---|---|---|---|---|---|---|
-| ML-KEM-512 | keygen | A | 3,116 | 256 | 114 | 0 | 546 | 2,200 | 2,616 | 0.84× | host bookkeeping |
-| ML-KEM-512 | keygen | A-par | 3,013 | 256 | 12 | 0 | 546 | 2,200 | 2,616 | 0.87× | host bookkeeping |
-| ML-KEM-512 | keygen | B1 | 2,886 | 102 | 380 | 0 | 205 | 2,200 | 2,616 | 0.91× | chip compute |
-| ML-KEM-512 | keygen | B2 | 2,641 | 102 | 134 | 0 | 205 | 2,200 | 2,616 | 0.99× | host bookkeeping |
-| ML-KEM-512 | keygen | B3 | 2,532 | 102 | 26 | 0 | 205 | 2,200 | 2,616 | 1.03× | host bookkeeping |
-| ML-KEM-512 | encaps | A | 3,456 | 353 | 194 | 0 | 751 | 2,157 | 2,606 | 0.75× | host bookkeeping |
-| ML-KEM-512 | encaps | A-par | 3,279 | 353 | 18 | 0 | 751 | 2,157 | 2,606 | 0.79× | host bookkeeping |
-| ML-KEM-512 | encaps | B1 | 3,169 | 161 | 526 | 0 | 324 | 2,157 | 2,606 | 0.82× | chip compute |
-| ML-KEM-512 | encaps | B2 | 2,813 | 161 | 171 | 0 | 324 | 2,157 | 2,606 | 0.93× | host bookkeeping |
-| ML-KEM-512 | encaps | B3 | 2,678 | 161 | 35 | 0 | 324 | 2,157 | 2,606 | 0.97× | host bookkeeping |
-| ML-KEM-512 | decaps | A | 4,207 | 543 | 259 | 0 | 1,161 | 2,244 | 2,854 | 0.68× | host bookkeeping |
-| ML-KEM-512 | decaps | A-par | 3,971 | 543 | 24 | 0 | 1,161 | 2,244 | 2,854 | 0.72× | host bookkeeping |
-| ML-KEM-512 | decaps | B1 | 3,748 | 236 | 791 | 0 | 478 | 2,244 | 2,854 | 0.76× | chip compute |
-| ML-KEM-512 | decaps | B2 | 3,226 | 236 | 268 | 0 | 478 | 2,244 | 2,854 | 0.88× | host bookkeeping |
-| ML-KEM-512 | decaps | B3 | 3,009 | 236 | 52 | 0 | 478 | 2,244 | 2,854 | 0.95× | host bookkeeping |
-| ML-KEM-768 | keygen | A | 5,112 | 415 | 256 | 0 | 870 | 3,571 | 4,281 | 0.84× | host bookkeeping |
-| ML-KEM-768 | keygen | A-par | 4,882 | 415 | 26 | 0 | 870 | 3,571 | 4,281 | 0.88× | host bookkeeping |
-| ML-KEM-768 | keygen | B1 | 4,769 | 184 | 655 | 0 | 358 | 3,571 | 4,281 | 0.90× | chip compute |
-| ML-KEM-768 | keygen | B2 | 4,323 | 184 | 209 | 0 | 358 | 3,571 | 4,281 | 0.99× | host bookkeeping |
-| ML-KEM-768 | keygen | B3 | 4,161 | 184 | 47 | 0 | 358 | 3,571 | 4,281 | 1.03× | host bookkeeping |
-| ML-KEM-768 | encaps | A | 5,673 | 530 | 373 | 0 | 1,109 | 3,661 | 4,392 | 0.77× | host bookkeeping |
-| ML-KEM-768 | encaps | A-par | 5,335 | 530 | 34 | 0 | 1,109 | 3,661 | 4,392 | 0.82× | host bookkeeping |
-| ML-KEM-768 | encaps | B1 | 5,272 | 261 | 838 | 0 | 512 | 3,661 | 4,392 | 0.83× | chip compute |
-| ML-KEM-768 | encaps | B2 | 4,683 | 261 | 249 | 0 | 512 | 3,661 | 4,392 | 0.94× | host bookkeeping |
-| ML-KEM-768 | encaps | B3 | 4,493 | 261 | 59 | 0 | 512 | 3,661 | 4,392 | 0.98× | host bookkeeping |
-| ML-KEM-768 | decaps | A | 6,679 | 783 | 466 | 0 | 1,655 | 3,774 | 4,719 | 0.71× | host bookkeeping |
-| ML-KEM-768 | decaps | A-par | 6,256 | 783 | 43 | 0 | 1,655 | 3,774 | 4,719 | 0.75× | host bookkeeping |
-| ML-KEM-768 | decaps | B1 | 6,049 | 361 | 1,197 | 0 | 717 | 3,774 | 4,719 | 0.78× | chip compute |
-| ML-KEM-768 | decaps | B2 | 5,232 | 361 | 380 | 0 | 717 | 3,774 | 4,719 | 0.90× | host bookkeeping |
-| ML-KEM-768 | decaps | B3 | 4,934 | 361 | 82 | 0 | 717 | 3,774 | 4,719 | 0.96× | host bookkeeping |
+| ML-KEM-512 | keygen | A | 3,329 | 256 | 114 | 0 | 546 | 2,413 | 2,616 | 0.79× | host bookkeeping |
+| ML-KEM-512 | keygen | B1 | 3,100 | 102 | 380 | 0 | 205 | 2,413 | 2,616 | 0.84× | chip compute |
+| ML-KEM-512 | keygen | B3 | 2,848 | 102 | 128 | 0 | 205 | 2,413 | 2,616 | 0.92× | host bookkeeping |
+| ML-KEM-512 | encaps | A | 3,650 | 353 | 194 | 0 | 751 | 2,352 | 2,606 | 0.71× | host bookkeeping |
+| ML-KEM-512 | encaps | B1 | 3,363 | 161 | 526 | 0 | 324 | 2,352 | 2,606 | 0.77× | chip compute |
+| ML-KEM-512 | encaps | B3 | 3,049 | 161 | 212 | 0 | 324 | 2,352 | 2,606 | 0.85× | host bookkeeping |
+| ML-KEM-512 | decaps | A | 4,424 | 543 | 259 | 0 | 1,161 | 2,462 | 2,854 | 0.65× | host bookkeeping |
+| ML-KEM-512 | decaps | B1 | 3,966 | 236 | 790 | 0 | 478 | 2,462 | 2,854 | 0.72× | chip compute |
+| ML-KEM-512 | decaps | B3 | 3,463 | 236 | 287 | 0 | 478 | 2,462 | 2,854 | 0.82× | host bookkeeping |
+| ML-KEM-768 | keygen | A | 5,485 | 415 | 256 | 0 | 870 | 3,944 | 4,281 | 0.78× | host bookkeeping |
+| ML-KEM-768 | keygen | B1 | 5,141 | 184 | 654 | 0 | 358 | 3,944 | 4,281 | 0.83× | chip compute |
+| ML-KEM-768 | keygen | B3 | 4,764 | 184 | 277 | 0 | 358 | 3,944 | 4,281 | 0.90× | host bookkeeping |
+| ML-KEM-768 | encaps | A | 6,008 | 530 | 372 | 0 | 1,109 | 3,996 | 4,392 | 0.73× | host bookkeeping |
+| ML-KEM-768 | encaps | B1 | 5,607 | 261 | 837 | 0 | 512 | 3,996 | 4,392 | 0.78× | chip compute |
+| ML-KEM-768 | encaps | B3 | 5,166 | 261 | 397 | 0 | 512 | 3,996 | 4,392 | 0.85× | host bookkeeping |
+| ML-KEM-768 | decaps | A | 7,039 | 783 | 465 | 0 | 1,655 | 4,135 | 4,719 | 0.67× | host bookkeeping |
+| ML-KEM-768 | decaps | B1 | 6,409 | 361 | 1,196 | 0 | 717 | 4,135 | 4,719 | 0.74× | chip compute |
+| ML-KEM-768 | decaps | B3 | 5,717 | 361 | 504 | 0 | 717 | 4,135 | 4,719 | 0.83× | host bookkeeping |
 
 ## PIO + FIFO + CPU refill, f_chip = 50 MHz
 
 | param set | op | design | total | pins | chip compute | host xfer | host book | host rest | SW baseline | speedup | coprocessor bottleneck |
 |---|---|---|---|---|---|---|---|---|---|---|---|
-| ML-KEM-512 | keygen | A | 3,617 | 256 | 114 | 501 | 546 | 2,200 | 2,616 | 0.72× | host bookkeeping |
-| ML-KEM-512 | keygen | A-par | 3,606 | 256 | 12 | 593 | 546 | 2,200 | 2,616 | 0.73× | host transfer |
-| ML-KEM-512 | keygen | B1 | 2,886 | 102 | 380 | 0 | 205 | 2,200 | 2,616 | 0.91× | chip compute |
-| ML-KEM-512 | keygen | B2 | 2,758 | 102 | 134 | 117 | 205 | 2,200 | 2,616 | 0.95× | host bookkeeping |
-| ML-KEM-512 | keygen | B3 | 2,758 | 102 | 26 | 225 | 205 | 2,200 | 2,616 | 0.95× | host transfer |
-| ML-KEM-512 | encaps | A | 4,112 | 353 | 194 | 657 | 751 | 2,157 | 2,606 | 0.63× | host bookkeeping |
-| ML-KEM-512 | encaps | A-par | 4,096 | 353 | 18 | 817 | 751 | 2,157 | 2,606 | 0.64× | host transfer |
-| ML-KEM-512 | encaps | B1 | 3,200 | 161 | 526 | 30 | 324 | 2,157 | 2,606 | 0.81× | chip compute |
-| ML-KEM-512 | encaps | B2 | 3,036 | 161 | 171 | 223 | 324 | 2,157 | 2,606 | 0.86× | host bookkeeping |
-| ML-KEM-512 | encaps | B3 | 3,036 | 161 | 35 | 358 | 324 | 2,157 | 2,606 | 0.86× | host transfer |
-| ML-KEM-512 | decaps | A | 5,249 | 543 | 259 | 1,043 | 1,161 | 2,244 | 2,854 | 0.54× | host bookkeeping |
-| ML-KEM-512 | decaps | A-par | 5,227 | 543 | 24 | 1,256 | 1,161 | 2,244 | 2,854 | 0.55× | host transfer |
-| ML-KEM-512 | decaps | B1 | 3,789 | 236 | 791 | 40 | 478 | 2,244 | 2,854 | 0.75× | chip compute |
-| ML-KEM-512 | decaps | B2 | 3,531 | 236 | 268 | 305 | 478 | 2,244 | 2,854 | 0.81× | host bookkeeping |
-| ML-KEM-512 | decaps | B3 | 3,531 | 236 | 52 | 522 | 478 | 2,244 | 2,854 | 0.81× | host transfer |
-| ML-KEM-768 | keygen | A | 5,864 | 415 | 256 | 752 | 870 | 3,571 | 4,281 | 0.73× | host bookkeeping |
-| ML-KEM-768 | keygen | A-par | 5,839 | 415 | 26 | 957 | 870 | 3,571 | 4,281 | 0.73× | host transfer |
-| ML-KEM-768 | keygen | B1 | 4,769 | 184 | 655 | 0 | 358 | 3,571 | 4,281 | 0.90× | chip compute |
-| ML-KEM-768 | keygen | B2 | 4,567 | 184 | 209 | 244 | 358 | 3,571 | 4,281 | 0.94× | host bookkeeping |
-| ML-KEM-768 | keygen | B3 | 4,567 | 184 | 47 | 407 | 358 | 3,571 | 4,281 | 0.94× | host transfer |
-| ML-KEM-768 | encaps | A | 6,590 | 530 | 373 | 917 | 1,109 | 3,661 | 4,392 | 0.67× | host bookkeeping |
-| ML-KEM-768 | encaps | A-par | 6,557 | 530 | 34 | 1,223 | 1,109 | 3,661 | 4,392 | 0.67× | host transfer |
-| ML-KEM-768 | encaps | B1 | 5,312 | 261 | 838 | 40 | 512 | 3,661 | 4,392 | 0.83× | chip compute |
-| ML-KEM-768 | encaps | B2 | 5,073 | 261 | 249 | 390 | 512 | 3,661 | 4,392 | 0.87× | host bookkeeping |
-| ML-KEM-768 | encaps | B3 | 5,073 | 261 | 59 | 580 | 512 | 3,661 | 4,392 | 0.87× | host transfer |
-| ML-KEM-768 | decaps | A | 8,108 | 783 | 466 | 1,429 | 1,655 | 3,774 | 4,719 | 0.58× | host bookkeeping |
-| ML-KEM-768 | decaps | A-par | 8,066 | 783 | 43 | 1,810 | 1,655 | 3,774 | 4,719 | 0.59× | host transfer |
-| ML-KEM-768 | decaps | B1 | 6,100 | 361 | 1,197 | 51 | 717 | 3,774 | 4,719 | 0.77× | chip compute |
-| ML-KEM-768 | decaps | B2 | 5,735 | 361 | 380 | 502 | 717 | 3,774 | 4,719 | 0.82× | host bookkeeping |
-| ML-KEM-768 | decaps | B3 | 5,735 | 361 | 82 | 800 | 717 | 3,774 | 4,719 | 0.82× | host transfer |
+| ML-KEM-512 | keygen | A | 3,831 | 256 | 114 | 501 | 546 | 2,413 | 2,616 | 0.68× | host bookkeeping |
+| ML-KEM-512 | keygen | B1 | 3,100 | 102 | 380 | 0 | 205 | 2,413 | 2,616 | 0.84× | chip compute |
+| ML-KEM-512 | keygen | B3 | 2,982 | 102 | 128 | 134 | 205 | 2,413 | 2,616 | 0.88× | host bookkeeping |
+| ML-KEM-512 | encaps | A | 4,307 | 353 | 194 | 657 | 751 | 2,352 | 2,606 | 0.61× | host bookkeeping |
+| ML-KEM-512 | encaps | B1 | 3,394 | 161 | 526 | 30 | 324 | 2,352 | 2,606 | 0.77× | chip compute |
+| ML-KEM-512 | encaps | B3 | 3,247 | 161 | 212 | 198 | 324 | 2,352 | 2,606 | 0.80× | host bookkeeping |
+| ML-KEM-512 | decaps | A | 5,467 | 543 | 259 | 1,043 | 1,161 | 2,462 | 2,854 | 0.52× | host bookkeeping |
+| ML-KEM-512 | decaps | B1 | 4,007 | 236 | 790 | 41 | 478 | 2,462 | 2,854 | 0.71× | chip compute |
+| ML-KEM-512 | decaps | B3 | 3,771 | 236 | 287 | 308 | 478 | 2,462 | 2,854 | 0.76× | host bookkeeping |
+| ML-KEM-768 | keygen | A | 6,237 | 415 | 256 | 752 | 870 | 3,944 | 4,281 | 0.69× | host bookkeeping |
+| ML-KEM-768 | keygen | B1 | 5,141 | 184 | 654 | 0 | 358 | 3,944 | 4,281 | 0.83× | chip compute |
+| ML-KEM-768 | keygen | B3 | 4,965 | 184 | 277 | 201 | 358 | 3,944 | 4,281 | 0.86× | host bookkeeping |
+| ML-KEM-768 | encaps | A | 6,925 | 530 | 372 | 918 | 1,109 | 3,996 | 4,392 | 0.63× | host bookkeeping |
+| ML-KEM-768 | encaps | B1 | 5,647 | 261 | 837 | 41 | 512 | 3,996 | 4,392 | 0.78× | chip compute |
+| ML-KEM-768 | encaps | B3 | 5,441 | 261 | 397 | 275 | 512 | 3,996 | 4,392 | 0.81× | host bookkeeping |
+| ML-KEM-768 | decaps | A | 8,468 | 783 | 465 | 1,429 | 1,655 | 4,135 | 4,719 | 0.56× | host bookkeeping |
+| ML-KEM-768 | decaps | B1 | 6,460 | 361 | 1,196 | 51 | 717 | 4,135 | 4,719 | 0.73× | chip compute |
+| ML-KEM-768 | decaps | B3 | 6,136 | 361 | 504 | 419 | 717 | 4,135 | 4,719 | 0.77× | host bookkeeping |
 
 ## Bit-banged GPIO, f_chip = 50 MHz (CPU-limited)
 
 | param set | op | design | total | pins | chip compute | host xfer | host book | host rest | SW baseline | speedup | coprocessor bottleneck |
 |---|---|---|---|---|---|---|---|---|---|---|---|
-| ML-KEM-512 | keygen | A | 4,226 | 1,024 | 456 | 0 | 546 | 2,200 | 2,616 | 0.62× | pin transfer |
-| ML-KEM-512 | keygen | A-par | 3,816 | 1,024 | 46 | 0 | 546 | 2,200 | 2,616 | 0.69× | pin transfer |
-| ML-KEM-512 | keygen | B1 | 4,333 | 410 | 1,519 | 0 | 205 | 2,200 | 2,616 | 0.60× | chip compute |
-| ML-KEM-512 | keygen | B2 | 3,350 | 410 | 536 | 0 | 205 | 2,200 | 2,616 | 0.78× | chip compute |
-| ML-KEM-512 | keygen | B3 | 2,917 | 410 | 102 | 0 | 205 | 2,200 | 2,616 | 0.90× | pin transfer |
-| ML-KEM-512 | encaps | A | 5,099 | 1,413 | 778 | 0 | 751 | 2,157 | 2,606 | 0.51× | pin transfer |
-| ML-KEM-512 | encaps | A-par | 4,391 | 1,413 | 70 | 0 | 751 | 2,157 | 2,606 | 0.59× | pin transfer |
-| ML-KEM-512 | encaps | B1 | 5,233 | 646 | 2,106 | 0 | 324 | 2,157 | 2,606 | 0.50× | chip compute |
-| ML-KEM-512 | encaps | B2 | 3,809 | 646 | 682 | 0 | 324 | 2,157 | 2,606 | 0.68× | chip compute |
-| ML-KEM-512 | encaps | B3 | 3,268 | 646 | 141 | 0 | 324 | 2,157 | 2,606 | 0.80× | pin transfer |
-| ML-KEM-512 | decaps | A | 6,613 | 2,171 | 1,038 | 0 | 1,161 | 2,244 | 2,854 | 0.43× | pin transfer |
-| ML-KEM-512 | decaps | A-par | 5,670 | 2,171 | 94 | 0 | 1,161 | 2,244 | 2,854 | 0.50× | pin transfer |
-| ML-KEM-512 | decaps | B1 | 6,827 | 943 | 3,163 | 0 | 478 | 2,244 | 2,854 | 0.42× | chip compute |
-| ML-KEM-512 | decaps | B2 | 4,738 | 943 | 1,074 | 0 | 478 | 2,244 | 2,854 | 0.60× | chip compute |
-| ML-KEM-512 | decaps | B3 | 3,872 | 943 | 207 | 0 | 478 | 2,244 | 2,854 | 0.74× | pin transfer |
-| ML-KEM-768 | keygen | A | 7,125 | 1,659 | 1,025 | 0 | 870 | 3,571 | 4,281 | 0.60× | pin transfer |
-| ML-KEM-768 | keygen | A-par | 6,203 | 1,659 | 102 | 0 | 870 | 3,571 | 4,281 | 0.69× | pin transfer |
-| ML-KEM-768 | keygen | B1 | 7,286 | 738 | 2,618 | 0 | 358 | 3,571 | 4,281 | 0.59× | chip compute |
-| ML-KEM-768 | keygen | B2 | 5,504 | 738 | 837 | 0 | 358 | 3,571 | 4,281 | 0.78× | chip compute |
-| ML-KEM-768 | keygen | B3 | 4,854 | 738 | 187 | 0 | 358 | 3,571 | 4,281 | 0.88× | pin transfer |
-| ML-KEM-768 | encaps | A | 8,381 | 2,120 | 1,491 | 0 | 1,109 | 3,661 | 4,392 | 0.52× | pin transfer |
-| ML-KEM-768 | encaps | A-par | 7,028 | 2,120 | 138 | 0 | 1,109 | 3,661 | 4,392 | 0.62× | pin transfer |
-| ML-KEM-768 | encaps | B1 | 8,569 | 1,045 | 3,350 | 0 | 512 | 3,661 | 4,392 | 0.51× | chip compute |
-| ML-KEM-768 | encaps | B2 | 6,213 | 1,045 | 995 | 0 | 512 | 3,661 | 4,392 | 0.71× | pin transfer |
-| ML-KEM-768 | encaps | B3 | 5,455 | 1,045 | 237 | 0 | 512 | 3,661 | 4,392 | 0.81× | pin transfer |
-| ML-KEM-768 | decaps | A | 10,428 | 3,133 | 1,865 | 0 | 1,655 | 3,774 | 4,719 | 0.45× | pin transfer |
-| ML-KEM-768 | decaps | A-par | 8,736 | 3,133 | 173 | 0 | 1,655 | 3,774 | 4,719 | 0.54× | pin transfer |
-| ML-KEM-768 | decaps | B1 | 10,723 | 1,445 | 4,787 | 0 | 717 | 3,774 | 4,719 | 0.44× | chip compute |
-| ML-KEM-768 | decaps | B2 | 7,456 | 1,445 | 1,520 | 0 | 717 | 3,774 | 4,719 | 0.63× | chip compute |
-| ML-KEM-768 | decaps | B3 | 6,265 | 1,445 | 329 | 0 | 717 | 3,774 | 4,719 | 0.75× | pin transfer |
+| ML-KEM-512 | keygen | A | 4,439 | 1,024 | 455 | 0 | 546 | 2,413 | 2,616 | 0.59× | pin transfer |
+| ML-KEM-512 | keygen | B1 | 4,546 | 410 | 1,518 | 0 | 205 | 2,413 | 2,616 | 0.58× | chip compute |
+| ML-KEM-512 | keygen | B3 | 3,539 | 410 | 511 | 0 | 205 | 2,413 | 2,616 | 0.74× | chip compute |
+| ML-KEM-512 | encaps | A | 5,292 | 1,413 | 776 | 0 | 751 | 2,352 | 2,606 | 0.49× | pin transfer |
+| ML-KEM-512 | encaps | B1 | 5,426 | 646 | 2,105 | 0 | 324 | 2,352 | 2,606 | 0.48× | chip compute |
+| ML-KEM-512 | encaps | B3 | 4,168 | 646 | 846 | 0 | 324 | 2,352 | 2,606 | 0.63× | chip compute |
+| ML-KEM-512 | decaps | A | 6,829 | 2,171 | 1,035 | 0 | 1,161 | 2,462 | 2,854 | 0.42× | pin transfer |
+| ML-KEM-512 | decaps | B1 | 7,044 | 943 | 3,161 | 0 | 478 | 2,462 | 2,854 | 0.41× | chip compute |
+| ML-KEM-512 | decaps | B3 | 5,031 | 943 | 1,148 | 0 | 478 | 2,462 | 2,854 | 0.57× | chip compute |
+| ML-KEM-768 | keygen | A | 7,496 | 1,659 | 1,022 | 0 | 870 | 3,944 | 4,281 | 0.57× | pin transfer |
+| ML-KEM-768 | keygen | B1 | 7,658 | 738 | 2,617 | 0 | 358 | 3,944 | 4,281 | 0.56× | chip compute |
+| ML-KEM-768 | keygen | B3 | 6,147 | 738 | 1,107 | 0 | 358 | 3,944 | 4,281 | 0.70× | chip compute |
+| ML-KEM-768 | encaps | A | 8,713 | 2,120 | 1,488 | 0 | 1,109 | 3,996 | 4,392 | 0.50× | pin transfer |
+| ML-KEM-768 | encaps | B1 | 8,902 | 1,045 | 3,348 | 0 | 512 | 3,996 | 4,392 | 0.49× | chip compute |
+| ML-KEM-768 | encaps | B3 | 7,140 | 1,045 | 1,586 | 0 | 512 | 3,996 | 4,392 | 0.62× | chip compute |
+| ML-KEM-768 | decaps | A | 10,785 | 3,133 | 1,861 | 0 | 1,655 | 4,135 | 4,719 | 0.44× | pin transfer |
+| ML-KEM-768 | decaps | B1 | 11,081 | 1,445 | 4,784 | 0 | 717 | 4,135 | 4,719 | 0.43× | chip compute |
+| ML-KEM-768 | decaps | B3 | 8,312 | 1,445 | 2,016 | 0 | 717 | 4,135 | 4,719 | 0.57× | chip compute |
 
 ## Parameters
 
@@ -231,13 +163,21 @@ models, latencies from `docs/PROTOCOL.md`, still PROPOSED). Host numbers are **a
 | book_per_transaction | 20 | ASSUMPTION: basemul / scale stream transaction |
 | book_per_block | 160 | ASSUMPTION: design B, gather 16 + scatter 16 coefficients |
 | book_overlap | 0 | ASSUMPTION: fraction of bookkeeping hidden behind the stream (0 = none; DMA-driven PIO could raise it) |
-| other_host_frac | 0.35 | ASSUMPTION: share of pqm4's non-hashing cycles that is NOT NTT/INTT/basemul (CBD sampling, packing, compression, additions) |
+| sw_ntt | 5992 | cited: ePrint 2022/112 Table 2, Kyber NTT, 'This work' |
+| sw_invntt | 5491 | cited: ePrint 2022/112 Table 2, Kyber iNTT (speed), includes the x128^-1 scale |
+| sw_basemul | 1613 | cited: ePrint 2022/112 Table 2, Kyber basemul (asymmetric, as in the inner product) |
 | b3_ntt_clocks | 950 | ASSUMPTION: handoff estimate ~900-1,000 clocks per NTT/INTT; B3 not simulated |
 
 ## Sources
 
+- **eprint2022_112**: A. Abdulrahman, V. Hwang, M. J. Kannwischer, A. Sprenkels, 'Faster Kyber and Dilithium on the Cortex-M4', ACNS 2022, ePrint 2022/112, Table 2 (copy in ref-docs/2022-112.pdf)
 - **pqm4**: mupq/pqm4 benchmarks.md, commit 5e5cc76d0b072ee7077e58afcbc619a1a67a53b4: 'Speed Evaluation' (m4fspeed, AVG cycles) and 'Hashing Evaluation' tables, https://github.com/mupq/pqm4/blob/5e5cc76d0b072ee7077e58afcbc619a1a67a53b4/benchmarks.md
 
-Per-operation software cycle counts (NTT, INTT, basemul alone) on Cortex-M4 are not in pqm4's
-summary. ePrint 2022/112 has them but was not reachable from this machine (HTTP 403), so the
-baseline split uses pqm4's hashing share instead. Replace with a Pico 2 measurement.
+Host work the chip never touches = pqm4 total minus the cited software cost of the offloaded
+calls (ePrint 2022/112 Table 2). The pqm4 hashing share shows where that time goes:
+- ML-KEM-512 keygen: 392,423 cycles, 75.5% hashing
+- ML-KEM-512 encaps: 390,881 cycles, 73.5% hashing
+- ML-KEM-512 decaps: 428,167 cycles, 67.1% hashing
+- ML-KEM-768 keygen: 642,096 cycles, 74.5% hashing
+- ML-KEM-768 encaps: 658,754 cycles, 74.4% hashing
+- ML-KEM-768 decaps: 707,827 cycles, 69.2% hashing

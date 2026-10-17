@@ -17,19 +17,17 @@ sys.path[:0] = [HERE, os.path.join(ROOT, "model")]
 
 from host import make_host  # noqa: E402
 
-VARIANTS = {"a_serial": ("A", "serial", False), "a_parallel": ("A", "parallel", False),
-            "a_serial_shuffle": ("A", "serial", True),
-            "b_serial": ("B", "serial", False), "b_parallel": ("B", "parallel", False),
-            "b_serial_shuffle": ("B", "serial", True), "b_parallel_shuffle": ("B", "parallel", True)}
+VARIANTS = {"a": ("A", False), "a_shuffle": ("A", True),          # a = the team design (Spec 1-5)
+            "b": ("B", False), "b_shuffle": ("B", True)}           # b = experimental block engine
 
 
 def generate(variant, seed=1):
     """-> Trace with ntt, invntt, scale, basemul of random polynomials, back to back."""
-    design, mult, shuffle = VARIANTS[variant]
+    design, shuffle = VARIANTS[variant]
     rng = random.Random(seed)
     f = [rng.randrange(3329) for _ in range(256)]
     g = [rng.randrange(3329) for _ in range(256)]
-    h = make_host(design, mult, shuffle, record=True, seed=seed)
+    h = make_host(design, shuffle, record=True, seed=seed)
     h.ntt(f); h.invntt(f); h.scale(f); h.basemul(f, g)
     return h.trace
 

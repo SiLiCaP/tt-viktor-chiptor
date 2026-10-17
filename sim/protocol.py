@@ -1,55 +1,51 @@
-"""Pin protocol constants for the NTT coprocessor (docs/PROTOCOL.md). Single source of truth:
-the chip models, the host model, the report and (later) the RTL tests all read these.
-
-STATUS: APPROVED 2026-10-17. Change them here only, and only with team agreement.
+"""Pin protocol constants for the NTT coprocessor (docs/PROTOCOL.md, team Spec 1/3/5). Single source of
+truth for the chip models, the host model, the report, the vector export and the RTL tests
+(this is the spec's timing.py).
 
 Cycle convention (same as cocotb and the Tang Nano rig): in cycle t the host drives the inputs,
-samples uo_out, then the rising edge happens. All outputs are registered, so uo_out in cycle t only
-depends on inputs from cycles < t.
+samples uo_out, then the rising edge happens. All outputs are registered.
+
+Output delays D follow from the RTL pipeline (Spec 3 "Latency and alignment"):
+    input capture 1 + multiplier L_MULT 4 + adders 0 (combinational) + control + packer 1.
 """
 
 OP_CT, OP_GS, OP_BASEMUL, OP_SCALE = 0, 1, 2, 3
-OP_NAMES = {OP_CT: "CT", OP_GS: "GS", OP_BASEMUL: "basemul", OP_SCALE: "scale"}
+OP_NAMES = {OP_CT: "forward", OP_GS: "inverse", OP_BASEMUL: "basemul", OP_SCALE: "scale"}
 
-WORDS = {OP_CT: 2, OP_GS: 2, OP_SCALE: 2, OP_BASEMUL: 4}      # input words per transaction
+L_MULT = 4                                    # modq_mul start -> p_valid
 
-# Stream transactions (design A, and design B's stream mode):
-# PERIOD = minimum clocks between the first words of consecutive transactions
-# LAT    = first result byte appears LAT clocks after the transaction's first word
-PERIOD = {
-    "serial":   {OP_CT: 3, OP_GS: 3, OP_SCALE: 6, OP_BASEMUL: 15},
-    "parallel": {OP_CT: 3, OP_GS: 3, OP_SCALE: 3, OP_BASEMUL: 5},
-}
-LAT = {
-    "serial":   {OP_CT: 8, OP_GS: 8, OP_SCALE: 10, OP_BASEMUL: 22},
-    "parallel": {OP_CT: 6, OP_GS: 6, OP_SCALE: 6, OP_BASEMUL: 12},
-}
+# One "unit" = the inputs that produce one result pair.
+#   forward/inverse: b = f[j+len], a = f[j]  -> (a', b')
+#   basemul piece i: g1, f1, g0, f0          -> (c0, c1)
+#   scale:           c0, c1 (3 clocks apart)  -> (c0', c1')
+OFFSETS = {OP_CT: (0, 1), OP_GS: (0, 1), OP_BASEMUL: (0, 1, 2, 3), OP_SCALE: (0, 3)}
+PERIOD = {OP_CT: 3, OP_GS: 3, OP_BASEMUL: 15, OP_SCALE: 6}     # unit start -> earliest next unit start
+LAT = {OP_CT: 6, OP_GS: 7, OP_BASEMUL: 20, OP_SCALE: 9}        # D: unit's first input -> first result byte
+JOB_INPUTS = {OP_CT: 1792, OP_GS: 1792, OP_BASEMUL: 512, OP_SCALE: 256}
+JOB_UNITS = {op: JOB_INPUTS[op] // len(OFFSETS[op]) for op in OFFSETS}
 
-# Design B block mode: header at cycle h, 16 data words at h+1 .. h+16 (consecutive),
-# compute for C clocks, 24 result bytes at h+17+C .. h+17+C+23. Next header >= h+17+C+24.
+
+# Design B (experimental, not in the team plan): block mode header and timing, serial multiplier.
 BLOCK_WORDS = 16
 BLOCK_BYTES = 24
 
 
 def block_butterflies(pass_id):
-    return 32 if pass_id in (0, 3) else 24          # 4 or 3 local layers x 8 butterflies
+    return 32 if pass_id in (0, 3) else 24
 
 
-def block_compute(pass_id, mult):
-    nbf = block_butterflies(pass_id)
-    return 3 * nbf + 3 if mult == "serial" else nbf + 3
+def block_compute(pass_id):
+    return 3 * block_butterflies(pass_id) + 3
 
 
-def block_lat(pass_id, mult):
-    """Header cycle -> first result byte."""
-    return 1 + BLOCK_WORDS + block_compute(pass_id, mult)
+def block_lat(pass_id):
+    return 1 + BLOCK_WORDS + block_compute(pass_id)
 
 
-def block_period(pass_id, mult):
-    return block_lat(pass_id, mult) + BLOCK_BYTES
+def block_period(pass_id):
+    return block_lat(pass_id) + BLOCK_BYTES
 
 
-# Header word (valid=1, sof=1) fields, design B only
 def header(block_mode, pass_id=0, blk=0, shuffle=False):
     return (pass_id & 3) | (int(block_mode) << 2) | ((blk & 15) << 3) | (int(shuffle) << 7)
 
@@ -59,7 +55,7 @@ def parse_header(din):
             "shuffle": bool(din >> 7 & 1), "reserved": din >> 8}
 
 
-# ByteEncode12 for one pair: b0 = v0[7:0], b1 = {v1[3:0], v0[11:8]}, b2 = v1[11:4]
+# ByteEncode12 for one pair: b0 = r0[7:0], b1 = {r1[3:0], r0[11:8]}, b2 = r1[11:4]
 def pack_pair(v0, v1):
     return [v0 & 0xFF, ((v1 & 0xF) << 4) | (v0 >> 8), v1 >> 4]
 

@@ -32,8 +32,10 @@ PARAMS = {
                                   "(0 = none; DMA-driven PIO could raise it)"),
 
     # software baseline and the host work the chip never touches
-    "other_host_frac":      (0.35, "ASSUMPTION: share of pqm4's non-hashing cycles that is NOT "
-                                   "NTT/INTT/basemul (CBD sampling, packing, compression, additions)"),
+    # software cost of the offloaded ops (Cortex-M4 cycles, speed-optimized), cited: ePrint 2022/112 Table 2
+    "sw_ntt":               (5992, "cited: ePrint 2022/112 Table 2, Kyber NTT, 'This work'"),
+    "sw_invntt":            (5491, "cited: ePrint 2022/112 Table 2, Kyber iNTT (speed), includes the x128^-1 scale"),
+    "sw_basemul":           (1613, "cited: ePrint 2022/112 Table 2, Kyber basemul (asymmetric, as in the inner product)"),
 
     # design B3 (overlapped buffers) is not built: handoff estimate
     "b3_ntt_clocks":        (950, "ASSUMPTION: handoff estimate ~900-1,000 clocks per NTT/INTT; B3 not simulated"),
@@ -47,6 +49,8 @@ PQM4 = {
 }
 
 SOURCES = {
+    "eprint2022_112": "A. Abdulrahman, V. Hwang, M. J. Kannwischer, A. Sprenkels, 'Faster Kyber and Dilithium on "
+                      "the Cortex-M4', ACNS 2022, ePrint 2022/112, Table 2 (copy in ref-docs/2022-112.pdf)",
     "pqm4": "mupq/pqm4 benchmarks.md, commit 5e5cc76d0b072ee7077e58afcbc619a1a67a53b4: "
             "'Speed Evaluation' (m4fspeed, AVG cycles) and 'Hashing Evaluation' tables, "
             "https://github.com/mupq/pqm4/blob/5e5cc76d0b072ee7077e58afcbc619a1a67a53b4/benchmarks.md",

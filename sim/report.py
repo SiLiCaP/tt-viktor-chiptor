@@ -18,7 +18,7 @@ from config import F_CHIP_SWEEP_HZ, PARAMS, PQM4, SOURCES, p  # noqa: E402
 from host import make_host  # noqa: E402
 from mlkem import PARAMS as KEMS, CountingBackend, ReferenceBackend  # noqa: E402
 
-DESIGNS = {"A": ("A", "serial"), "A-par": ("A", "parallel"), "B1": ("B", "serial"), "B2": ("B", "parallel")}
+DESIGNS = {"A": "A", "B1": "B"}          # A = team design (Spec 1-5); B1 = experimental block engine
 OPS = ("keygen", "encaps", "decaps")
 MODES = ("ideal_pio", "pio_fifo_cpu", "bitbang")
 
@@ -28,8 +28,8 @@ def call_profiles():
     rng = random.Random(0)
     f = [rng.randrange(3329) for _ in range(256)]
     prof = {}
-    for name, (design, mult) in DESIGNS.items():
-        h = make_host(design, mult)
+    for name, design in DESIGNS.items():
+        h = make_host(design)
         h.ntt(f); h.invntt(f); h.scale(f); h.basemul(f, f)
         prof[name] = {}
         for s in h.stats:
@@ -39,7 +39,7 @@ def call_profiles():
                 units, kind = 128, "transaction"
             prof[name][s.op] = dict(clocks=s.clocks, words=s.words_in, bytes=s.bytes_out,
                                     units=units, kind=kind, source="simulated")
-    b3 = {op: dict(v) for op, v in prof["B2"].items()}          # B3: handoff estimate, not built
+    b3 = {op: dict(v) for op, v in prof["B1"].items()}          # B3: handoff estimate, not built
     for op in ("ntt", "invntt"):
         b3[op].update(clocks=p("b3_ntt_clocks"), source="ASSUMPTION")
     prof["B3"] = b3
@@ -90,7 +90,9 @@ def evaluate(profiles, counts):
         for op in OPS:
             sw_cycles, hash_share = PQM4[(ps, op)]
             sw_cycles *= p("m33_vs_m4")
-            rest = sw_cycles * (hash_share + (1 - hash_share) * p("other_host_frac")) / f_rp
+            c = counts[(ps, op)]
+            offloaded = c["ntt"] * p("sw_ntt") + c["invntt"] * p("sw_invntt") + c["basemul"] * p("sw_basemul")
+            rest = (sw_cycles - offloaded * p("m33_vs_m4")) / f_rp       # host work the chip never touches
             for design, prof in profiles.items():
                 for f_chip in F_CHIP_SWEEP_HZ[0]:
                     for mode in MODES:
@@ -156,9 +158,10 @@ def write(profiles, counts, rows, outdir):
     for k, (v, s) in PARAMS.items():
         L.append(f"| {k} | {v:g} | {s} |")
     L += ["", "## Sources", ""] + [f"- **{k}**: {v}" for k, v in SOURCES.items()]
-    L += ["", "Per-operation software cycle counts (NTT, INTT, basemul alone) on Cortex-M4 are not in pqm4's",
-          "summary. ePrint 2022/112 has them but was not reachable from this machine (HTTP 403), so the",
-          "baseline split uses pqm4's hashing share instead. Replace with a Pico 2 measurement."]
+    L += ["", "Host work the chip never touches = pqm4 total minus the cited software cost of the offloaded",
+          "calls (ePrint 2022/112 Table 2). The pqm4 hashing share shows where that time goes:"]
+    for (ps, op), (cyc, hs) in PQM4.items():
+        L.append(f"- {ps} {op}: {cyc:,} cycles, {hs:.1%} hashing")
     with open(os.path.join(outdir, "bottleneck.md"), "w") as fh:
         fh.write("\n".join(L) + "\n")
 

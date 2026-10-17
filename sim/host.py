@@ -1,34 +1,37 @@
-"""RP2350 host model: turns ntt / invntt / basemul / scale calls into per-clock pin stimulus,
-runs it through a chip model in lockstep, samples uo_out at the fixed protocol offsets and
-decodes ByteEncode12.
+"""RP2350 host model (team Spec 1 "software chip" harness): turns forward / inverse / basemul / scale calls
+into per-clock pin stimulus, runs it through a chip model in lockstep, samples uo_out at the fixed
+offsets of sim/protocol.py and decodes ByteEncode12.
 
 A Host is an ML-KEM backend:  MLKEM768(backend=Host(ChipA()))
+  ntt, invntt: plain results.  basemul: 169 * plain (K-RED).  scale: x * 3303 * 169^-1.
+  factor = 169 tells model/mlkem.py to account for the basemul factor.
 
-Each transaction's input words are built at the clock they are sent, from coefficients the host
-has already received back. If a coefficient is still in flight the host idles (counted as a stall),
-like a real in-order host would.
+Each unit's input words are built at the clock they are sent, from coefficients already received
+back. If a coefficient is still in flight the host idles (counted as a stall).
 """
 import random
 from dataclasses import dataclass, field
 
 from chip_a import ChipA
+from chip_arith import FACTOR
 from chip_b import ChipB
 from mlkem_ntt_model import N
 from pins import IDLE, PinIn
-from protocol import (LAT, OP_BASEMUL, OP_CT, OP_GS, OP_SCALE, PERIOD, block_lat, block_period,
+from protocol import (LAT, OFFSETS, OP_BASEMUL, OP_CT, OP_GS, OP_SCALE, PERIOD, block_lat, block_period,
                       header, unpack_pair)
 
 INF = float("inf")
 
 
 @dataclass
-class Job:
-    words: list                 # list of PinIn builders: each is a function(data) -> PinIn
-    needs: list                 # data indices that must be back before the first word goes out
-    outs: list                  # data indices the result pairs are written to, in output order
-    lat: int = 0                # first word -> first result byte
-    period: int = 1             # first word -> earliest next job
-    out_stride: int = 3         # clocks between result pairs
+class Unit:
+    words: list                 # functions data -> PinIn
+    offsets: tuple              # clock offset of each word from the unit start
+    needs: list                 # data indices that must be back before the unit starts
+    outs: list                  # [(i0, i1)] targets for each result pair, in output order
+    lat: int = 0                # unit start -> first result byte
+    period: int = 1             # unit start -> earliest next unit start
+    out_stride: int = 3
 
 
 @dataclass
@@ -50,55 +53,53 @@ class Trace:
 
 
 class Host:
+    factor = FACTOR
+
     def __init__(self, chip, shuffle=False, record=False, seed=None):
         self.chip = chip
         self.design = "B" if isinstance(chip, ChipB) else "A"
-        self.mult = chip.mult
         self.shuffle = shuffle      # B: chip LFSR shuffle bit; A: host reorders butterflies sharing a twiddle
         self.rng = random.Random(seed)   # stands in for the RP2350 TRNG
         self.stats = []
         self.trace = Trace() if record else None
-        self.last_out = -1          # last cycle with a scheduled result byte (avoid collisions)
+        self.last_out = -1
 
     # ---------------- generic lockstep engine ----------------
-    def _run(self, label, jobs, data):
+    def _run(self, label, units, data):
         chip = self.chip
-        ready = {}                  # data index -> first cycle it may be read (absent = ready)
-        expect = {}                 # cycle -> (job, pair index, byte index)
-        got = {}
-        t_start = chip.cycle
-        next_ok = chip.cycle
+        ready, expect, got = {}, {}, {}
+        t_start = next_ok = chip.cycle
         stalls = words_in = bytes_out = 0
-        ji = 0
-        sending = []                # remaining PinIns of the job being sent
+        ui_ = 0
+        sending = {}                # cycle -> PinIn
         if self.trace is not None:
             self.trace.marks.append((len(self.trace.stim), label))
 
-        while ji < len(jobs) or sending or expect:
+        while ui_ < len(units) or sending or expect:
             t = chip.cycle
-            pin = IDLE
-            if sending:
-                pin = sending.pop(0)
-            elif ji < len(jobs):
-                job = jobs[ji]
-                t_out = t + job.lat
-                if t >= next_ok and t_out > self.last_out and all(ready.get(i, 0) <= t for i in job.needs):
-                    words = [w(data) for w in job.words]
-                    pin, sending = words[0], words[1:]
+            pin = sending.pop(t, None)
+            if pin is None and not sending and ui_ < len(units):
+                u = units[ui_]
+                t_out = t + u.lat
+                if t >= next_ok and t_out > self.last_out and all(ready.get(i, 0) <= t for i in u.needs):
+                    words = [w(data) for w in u.words]
+                    for w, off in zip(words, u.offsets):
+                        sending[t + off] = w
+                    pin = sending.pop(t)
                     words_in += len(words)
-                    for p, idx in enumerate(job.outs):
+                    for p, idx in enumerate(u.outs):
                         for b in range(3):
-                            expect[t_out + p * job.out_stride + b] = (ji, p, b)
+                            expect[t_out + p * u.out_stride + b] = (ui_, p, b)
                         for i in idx:
                             ready[i] = INF
-                    if job.outs:
-                        self.last_out = t_out + (len(job.outs) - 1) * job.out_stride + 2
-                    next_ok = t + job.period
-                    ji += 1
+                    if u.outs:
+                        self.last_out = t_out + (len(u.outs) - 1) * u.out_stride + 2
+                    next_ok = t + u.period
+                    ui_ += 1
                 elif t >= next_ok:
                     stalls += 1
 
-            ui, uio = pin.encode()
+            ui, uio = (pin or IDLE).encode()
             uo = chip.step(ui, uio)
             if self.trace is not None:
                 self.trace.stim.append((uio << 8) | ui)
@@ -111,12 +112,14 @@ class Host:
                 bytes_out += 1
                 if b == 2:
                     v = unpack_pair(*got.pop((j, p)))
-                    for i, val in zip(jobs[j].outs[p], v):
+                    for i, val in zip(units[j].outs[p], v):
+                        if val >= 3329:
+                            raise IOError(f"result {val} >= q at cycle {t}: hardware fault")
                         data[i] = val
                         ready[i] = t + 1
         self.stats.append(CallStats(label, chip.cycle - t_start, stalls, words_in, bytes_out))
 
-    # ---------------- job builders ----------------
+    # ---------------- unit builders ----------------
     @staticmethod
     def _word(idx, sof=False, op=0):
         return lambda d: PinIn(din=d[idx], valid=True, sof=sof, op=op)
@@ -125,22 +128,20 @@ class Host:
     def _const(din, sof=False, op=0):
         return lambda d: PinIn(din=din, valid=True, sof=sof, op=op)
 
-    def _stream_jobs(self, op, groups, outs):
-        """groups: input index lists per transaction; outs: [(i0, i1)] result targets per transaction."""
-        jobs = []
-        lat, per = LAT[self.mult][op], PERIOD[self.mult][op]
-        if self.design == "B":       # B: a stream-mode header precedes the frame
-            jobs.append(Job([self._const(header(False), sof=True, op=op)], [], [], 0, 1))
+    def _stream_units(self, op, groups, outs):
+        """One chip job. groups: input indices per unit in send order; outs: (r0, r1) targets per unit."""
+        units = []
+        if self.design == "B":       # B: a stream-mode header starts the job
+            units.append(Unit([self._const(header(False), sof=True, op=op)], (0,), [], [], 0, 1))
         for n, (g, o) in enumerate(zip(groups, outs)):
-            sof = self.design == "A" and n == 0
-            ws = [self._word(i, sof=(sof and k == 0), op=op) for k, i in enumerate(g)]
-            jobs.append(Job(ws, list(g), [o], lat, per))
-        return jobs
+            first = self.design == "A" and n == 0
+            ws = [self._word(i, sof=(first and k == 0), op=op) for k, i in enumerate(g)]
+            units.append(Unit(ws, OFFSETS[op], list(g), [o], LAT[op], PERIOD[op]))
+        return units
 
     def _bf_order(self, inverse):
-        """Canonical FIPS 203 butterfly order: [(j, j+L)] for all 7 layers. With shuffle (design A)
-        the host permutes the butterflies inside each run that shares a twiddle: the chip's counters
-        only count, so any order inside such a run gets the same twiddle."""
+        """Butterflies (j, j+len) in canonical FIPS 203 order. With shuffle (design A) the host permutes
+        butterflies inside each run that shares a twiddle; the chip's counters only count."""
         pairs = []
         for layer in range(7):
             L = (2 << layer) if inverse else (128 >> layer)
@@ -151,58 +152,60 @@ class Host:
                 pairs += group
         return pairs
 
-    def _block_jobs(self, passes):
-        jobs = []
+    def _layer_gaps(self, units, op):
+        """A with host shuffle: wait LAT clocks after every layer, so the next layer never needs a result
+        still in flight. A fixed gap keeps the timing independent of the (secret) permutation."""
+        if self.shuffle:
+            first = 1 if self.design == "B" else 0
+            for k in range(first + 127, len(units) - 1, 128):
+                units[k].period += LAT[op]
+        return units
+
+    def _block_units(self, passes):
+        units = []
         for pid in passes:
             for blk in range(16):
                 idx = [blk + 16 * m for m in range(16)] if pid in (0, 3) else [16 * blk + m for m in range(16)]
                 ws = [self._const(header(True, pid, blk, self.shuffle), sof=True)] + [self._word(i) for i in idx]
                 outs = [(idx[2 * k], idx[2 * k + 1]) for k in range(8)]
-                jobs.append(Job(ws, idx, outs, block_lat(pid, self.mult), block_period(pid, self.mult)))
-        return jobs
+                units.append(Unit(ws, tuple(range(17)), idx, outs, block_lat(pid), block_period(pid)))
+        return units
 
-    def _layer_gaps(self, jobs, op):
-        """A with host shuffle: the next layer's first butterfly may need the previous layer's last
-        result, so wait LAT clocks after every layer. A fixed gap keeps the timing independent of
-        the (secret) permutation; without shuffle the canonical order never needs it."""
-        if self.shuffle:
-            for k in range(127, len(jobs) - 1, 128):
-                jobs[k].period += LAT[self.mult][op]
-        return jobs
+    def _butterflies(self, op, inverse, label, f):
+        d = list(f)
+        pairs = self._bf_order(inverse)
+        groups = [(hi, lo) for lo, hi in pairs]          # send b = f[j+len] first, then a = f[j]
+        self._run(label, self._layer_gaps(self._stream_units(op, groups, pairs), op), d)
+        return d
 
     # ---------------- backend interface ----------------
     def ntt(self, f):
-        d = list(f)
-        if self.design == "A":
-            pairs = self._bf_order(False)
-            self._run("ntt", self._layer_gaps(self._stream_jobs(OP_CT, pairs, pairs), OP_CT), d)
-        else:
-            self._run("ntt", self._block_jobs((0, 1)), d)
-        return d
+        if self.design == "B":
+            d = list(f)
+            self._run("ntt", self._block_units((0, 1)), d)
+            return d
+        return self._butterflies(OP_CT, False, "ntt", f)
 
     def invntt(self, f):
-        d = list(f)
-        if self.design == "A":
-            pairs = self._bf_order(True)
-            self._run("invntt", self._layer_gaps(self._stream_jobs(OP_GS, pairs, pairs), OP_GS), d)
-        else:
-            self._run("invntt", self._block_jobs((2, 3)), d)
-        return d
+        if self.design == "B":
+            d = list(f)
+            self._run("invntt", self._block_units((2, 3)), d)
+            return d
+        return self._butterflies(OP_GS, True, "invntt", f)
 
     def scale(self, f):
         d = list(f)
         pairs = [(2 * i, 2 * i + 1) for i in range(128)]
-        self._run("scale", self._stream_jobs(OP_SCALE, pairs, pairs), d)
+        self._run("scale", self._stream_units(OP_SCALE, pairs, pairs), d)
         return d
 
     def basemul(self, f, g):
         d = list(f) + list(g) + [0] * N          # f at 0.., g at 256.., h at 512..
-        groups = [(2 * i, 2 * i + 1, N + 2 * i, N + 2 * i + 1) for i in range(128)]
+        groups = [(N + 2 * i + 1, 2 * i + 1, N + 2 * i, 2 * i) for i in range(128)]   # g1, f1, g0, f0
         outs = [(2 * N + 2 * i, 2 * N + 2 * i + 1) for i in range(128)]
-        self._run("basemul", self._stream_jobs(OP_BASEMUL, groups, outs), d)
+        self._run("basemul", self._stream_units(OP_BASEMUL, groups, outs), d)
         return d[2 * N:]
 
 
-def make_host(design, mult="serial", shuffle=False, record=False, seed=None):
-    chip = ChipA(mult) if design == "A" else ChipB(mult)
-    return Host(chip, shuffle=shuffle, record=record, seed=seed)
+def make_host(design="A", shuffle=False, record=False, seed=None):
+    return Host(ChipA() if design == "A" else ChipB(), shuffle=shuffle, record=record, seed=seed)

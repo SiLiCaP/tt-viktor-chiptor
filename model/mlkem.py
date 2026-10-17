@@ -23,7 +23,11 @@ INV128 = 3303   # 128^-1 mod q
 
 # ---------- backend interface ----------
 class ReferenceBackend:
-    """Golden-model backend. invntt is the 7 GS layers without the final x128^-1; scale does that."""
+    """Golden-model backend. invntt is the 7 GS layers without the final x128^-1; scale does that.
+
+    Backend contract: basemul returns factor * plain, and scale multiplies by 3303 * factor^-1, so
+    invntt + scale of a basemul sum is plain. The K-RED chip has factor = 169; this one has 1."""
+    factor = 1
 
     def ntt(self, f):
         return ntt_ref(f)
@@ -47,6 +51,8 @@ class CountingBackend:
 
     def __getattr__(self, op):
         fn = getattr(self.inner, op)
+        if not callable(fn):
+            return fn
 
         def counted(*args):
             self.counts[op] += 1
@@ -141,6 +147,8 @@ class MLKEM:
     def __init__(self, k, eta1, eta2, du, dv, backend=None):
         self.k, self.eta1, self.eta2, self.du, self.dv = k, eta1, eta2, du, dv
         self.be = backend or ReferenceBackend()
+        self.factor = getattr(self.be, "factor", 1)
+        self.unfactored = 0      # host-side x factor^-1 corrections (polynomials), for the report
 
     # backend helpers: the only places polynomial arithmetic happens
     def _intt(self, f):
@@ -152,6 +160,15 @@ class MLKEM:
         for a, b in zip(row, vec):
             acc = padd(acc, self.be.basemul(a, b))
         return acc
+
+    def _unfactor(self, f):
+        """A basemul sum used without INTT + scale (KeyGen's t_hat) still carries the backend's factor;
+        the host removes it: 256 multiplications by factor^-1."""
+        if self.factor == 1:
+            return f
+        self.unfactored += 1
+        inv = pow(self.factor, -1, Q)
+        return [x * inv % Q for x in f]
 
     def _matrix(self, rho, transpose=False):
         k = self.k
@@ -170,7 +187,7 @@ class MLKEM:
             e.append(sample_poly_cbd(PRF(self.eta1, sigma, nonce), self.eta1)); nonce += 1
         s_hat = [self.be.ntt(p) for p in s]
         e_hat = [self.be.ntt(p) for p in e]
-        t_hat = [padd(self._dot(A[i], s_hat), e_hat[i]) for i in range(self.k)]
+        t_hat = [padd(self._unfactor(self._dot(A[i], s_hat)), e_hat[i]) for i in range(self.k)]
         ek = b"".join(byte_encode(t, 12) for t in t_hat) + rho
         dk = b"".join(byte_encode(s, 12) for s in s_hat)
         return ek, dk
