@@ -1,0 +1,488 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>NTT Chip Showcase</title>
+<style>
+:root {
+  color-scheme: light;
+  --bg: #f4f3ef; --surface: #fcfcfb; --surface-2: #efeee9; --border: #dcdad3;
+  --ink: #0b0b0b; --ink-2: #52514e; --ink-3: #7a7974; --grid: #e6e5e0;
+  --s1: #2a78d6; --s2: #eb6834; --s3: #1baf7a; --s4: #eda100;
+  --good: #1a7f37; --bad: #c62828; --eve: #6250d6;
+  --div-neg: #2a78d6; --div-mid: #d8d6cf; --div-pos: #eb6834;
+}
+@media (prefers-color-scheme: dark) {
+  :root:where(:not([data-theme="light"])) {
+    color-scheme: dark;
+    --bg: #121211; --surface: #1a1a19; --surface-2: #232321; --border: #34332f;
+    --ink: #f0efec; --ink-2: #c3c2b7; --ink-3: #8f8e86; --grid: #2c2b28;
+    --s1: #3987e5; --s2: #d95926; --s3: #199e70; --s4: #c98500;
+    --good: #3fb950; --bad: #f05252; --eve: #9085e9;
+    --div-neg: #3987e5; --div-mid: #3a3935; --div-pos: #d95926;
+  }
+}
+:root[data-theme="dark"] {
+  color-scheme: dark;
+  --bg: #121211; --surface: #1a1a19; --surface-2: #232321; --border: #34332f;
+  --ink: #f0efec; --ink-2: #c3c2b7; --ink-3: #8f8e86; --grid: #2c2b28;
+  --s1: #3987e5; --s2: #d95926; --s3: #199e70; --s4: #c98500;
+  --good: #3fb950; --bad: #f05252; --eve: #9085e9;
+  --div-neg: #3987e5; --div-mid: #3a3935; --div-pos: #d95926;
+}
+* { box-sizing: border-box; }
+body { margin: 0; background: var(--bg); color: var(--ink); font: 15px/1.45 system-ui, -apple-system, "Segoe UI", Roboto, sans-serif; }
+header { position: sticky; top: 0; z-index: 5; background: var(--surface); border-bottom: 1px solid var(--border); }
+.bar { display: flex; flex-wrap: wrap; align-items: center; gap: 10px 18px; padding: 12px 20px; }
+h1 { font-size: 19px; margin: 0; }
+.badge { font-size: 12px; padding: 3px 10px; border-radius: 999px; background: var(--surface-2); color: var(--ink-2); border: 1px solid var(--border); }
+.badge.live { color: #fff; background: var(--s3); border-color: transparent; }
+.spacer { flex: 1; }
+.stat { font-variant-numeric: tabular-nums; font-size: 13px; color: var(--ink-2); }
+.stat b { color: var(--ink); font-size: 16px; }
+.pins { padding: 0 20px 10px; }
+.pins svg { width: 100%; height: 100px; display: block; }
+nav { display: flex; gap: 4px; padding: 0 16px; overflow-x: auto; }
+nav button { background: none; color: var(--ink-2); border: none; border-bottom: 3px solid transparent; padding: 10px 14px; font: inherit; font-weight: 600; cursor: pointer; white-space: nowrap; }
+nav button.on { color: var(--ink); border-bottom-color: var(--s1); }
+main { max-width: 1320px; margin: 0 auto; padding: 18px 16px 120px; }
+section { display: none; } section.on { display: block; }
+.grid { display: grid; gap: 14px; }
+.g2 { grid-template-columns: 1fr 1fr; } .g3 { grid-template-columns: 1fr 1fr 1fr; } .g32 { grid-template-columns: 1.4fr 1fr; }
+@media (max-width: 900px) { .g2, .g3, .g32 { grid-template-columns: 1fr; } }
+.card { background: var(--surface); border: 1px solid var(--border); border-radius: 12px; padding: 16px; min-width: 0; }
+.card h2 { font-size: 13px; margin: 0 0 10px; color: var(--ink-2); text-transform: uppercase; letter-spacing: .05em; }
+.card h3 { margin: 4px 0 8px; font-size: 18px; }
+.lead { font-size: 16px; color: var(--ink-2); max-width: 900px; }
+.actions { display: flex; flex-wrap: wrap; gap: 10px; align-items: center; margin: 4px 0 14px; }
+button.btn { font: inherit; font-weight: 600; padding: 9px 16px; border-radius: 8px; border: 1px solid transparent; background: var(--s1); color: #fff; cursor: pointer; }
+button.btn.ghost { background: var(--surface-2); color: var(--ink); border-color: var(--border); }
+button.btn.eve { background: var(--eve); }
+button.btn:disabled { opacity: .45; cursor: progress; }
+input[type=text] { font: inherit; padding: 8px 10px; border-radius: 8px; border: 1px solid var(--border); background: var(--surface); color: var(--ink); flex: 1 1 260px; min-width: 0; }
+.hex { font: 12px/1.5 ui-monospace, Menlo, Consolas, monospace; color: var(--ink-2); overflow-wrap: anywhere; max-height: 160px; overflow: auto; background: var(--surface-2); border-radius: 8px; padding: 8px 10px; }
+.hex .hl1 { color: var(--s1); } .hex .hl2 { color: var(--s2); } .hex .hl3 { color: var(--s3); } .hex .flip { background: var(--bad); color: #fff; border-radius: 3px; }
+.kv { display: grid; grid-template-columns: auto 1fr; gap: 4px 12px; font-size: 13px; }
+.kv dt { color: var(--ink-3); } .kv dd { margin: 0; font-family: ui-monospace, Menlo, monospace; overflow-wrap: anywhere; }
+.big { font-size: 44px; font-weight: 800; line-height: 1.05; font-variant-numeric: tabular-nums; }
+.ok { color: var(--good); font-weight: 700; } .bad { color: var(--bad); font-weight: 700; }
+.muted { color: var(--ink-3); font-size: 13px; }
+canvas.hm { width: 100%; aspect-ratio: 1; image-rendering: pixelated; border-radius: 6px; display: block; }
+.mini { display: grid; grid-template-columns: repeat(2, 1fr); gap: 8px; }
+.cap { font-size: 12px; color: var(--ink-3); margin-top: 4px; }
+table { border-collapse: collapse; width: 100%; font-size: 13px; font-variant-numeric: tabular-nums; }
+th, td { padding: 6px 8px; text-align: right; border-bottom: 1px solid var(--grid); } th:first-child, td:first-child { text-align: left; }
+th { color: var(--ink-3); font-weight: 600; }
+.steps { display: grid; grid-template-columns: repeat(5, 1fr); gap: 8px; }
+.stepbox { background: var(--surface-2); border-radius: 10px; padding: 10px; border: 2px solid transparent; }
+.stepbox.done { border-color: var(--s3); } .stepbox.run { border-color: var(--s4); animation: pulse 1s ease-in-out infinite alternate; }
+@keyframes pulse { from { opacity: 1 } to { opacity: .55 } }
+.stepbox b { display: block; font-size: 13px; } .stepbox span { font-size: 12px; color: var(--ink-3); }
+@media (max-width: 900px) { .steps { grid-template-columns: 1fr 1fr; } }
+.flow { display: grid; grid-template-columns: 1fr 120px 1fr; gap: 10px; align-items: start; }
+@media (max-width: 900px) { .flow { grid-template-columns: 1fr; } }
+.arrow { text-align: center; font-size: 13px; color: var(--ink-3); padding-top: 40px; }
+.arrow .pk { display: inline-block; padding: 5px 10px; border-radius: 6px; color: #fff; font-weight: 700; margin: 4px 0; }
+.log { position: fixed; left: 0; right: 0; bottom: 0; max-height: 108px; overflow: auto; background: var(--surface); border-top: 1px solid var(--border); font-size: 13px; padding: 6px 20px; display: flex; flex-direction: column-reverse; z-index: 4; }
+.log div { padding: 2px 0; } .log .who { font-weight: 700; margin-right: 6px; }
+.log .ok .who { color: var(--good); } .log .bad .who { color: var(--bad); } .log .eve .who { color: var(--eve); }
+.tip { position: fixed; pointer-events: none; background: var(--ink); color: var(--surface); font-size: 12px; padding: 4px 8px; border-radius: 6px; display: none; z-index: 20; }
+.legend { display: flex; flex-wrap: wrap; gap: 14px; font-size: 12px; color: var(--ink-2); margin-top: 6px; }
+.legend i { display: inline-block; width: 10px; height: 10px; border-radius: 2px; margin-right: 5px; vertical-align: -1px; }
+.coef { display: grid; grid-template-columns: repeat(16, 1fr); gap: 2px; font: 11px ui-monospace, Menlo, monospace; text-align: center; }
+.coef div { padding: 3px 0; border-radius: 3px; background: var(--surface-2); }
+.coef .hit { background: var(--bad); color: #fff; } .coef .miss { background: var(--surface-2); color: var(--ink-3); }
+.pinout { width: 100%; max-width: 560px; }
+</style>
+</head>
+<body>
+<header>
+  <div class="bar">
+    <h1 id="title">ML-KEM-512 on our NTT chip</h1>
+    <span class="badge" id="src">connecting…</span>
+    <span class="badge" id="busy">idle</span>
+    <span class="spacer"></span>
+    <span class="stat">chip calls <b id="calls">0</b></span>
+    <span class="stat">clocks streamed <b id="clocks">0</b></span>
+    <label class="stat"><input type="checkbox" id="mask"> masking</label>
+    <button class="btn ghost" id="theme" title="light / dark">◐</button>
+  </div>
+  <div class="pins"><svg id="pins" role="img" aria-label="Live chip pins: the latest batch"></svg></div>
+  <nav id="nav">
+    <button data-t="chip" class="on">1 · The chip</button>
+    <button data-t="polymul">2 · Multiply polynomials</button>
+    <button data-t="kex">3 · Key exchange</button>
+    <button data-t="msg">4 · Secret message</button>
+    <button data-t="eve">5 · Eve attacks</button>
+    <button data-t="perf">6 · Performance</button>
+    <button data-t="system">7 · Final system: RP2350 + chip</button>
+  </nav>
+</header>
+
+<main>
+<!-- 1 chip -->
+<section id="t-chip" class="on">
+  <p class="lead">A post-quantum coprocessor on a Tiny Tapeout tile. The RP2350 (here: the PC) runs ML-KEM;
+    our chip does its polynomial arithmetic: forward NTT, inverse NTT, basemul and scale, modulo 3329.
+    The strip above shows the chip's real pins, live: coefficients going in, result bytes coming out at a fixed delay.</p>
+  <div class="grid g32">
+    <div class="card"><h2>Pins</h2><svg class="pinout" id="pinout" viewBox="0 0 560 250" role="img" aria-label="Pin map"></svg></div>
+    <div class="card"><h2>Facts</h2>
+      <dl class="kv">
+        <dt>process</dt><dd>sky130, Tiny Tapeout, 2×2 tiles</dd>
+        <dt>area</dt><dd>≈ 23,000 µm² of cells</dd>
+        <dt>multiplier</dt><dd>12×12 with K-RED reduction, 1 product / clock</dd>
+        <dt>one NTT</dt><dd>896 butterflies, 3 clocks each (output pins)</dd>
+        <dt>result delay</dt><dd>fixed: 6 clocks forward, 7 inverse (constant time)</dd>
+        <dt>verified</dt><dd>exhaustive multiplier test, RTL + gate level + FPGA, ML-KEM byte-exact</dd>
+      </dl>
+      <div class="actions" style="margin-top:14px"><button class="btn" data-go="polymul">Start: multiply two polynomials →</button></div>
+    </div>
+  </div>
+</section>
+
+<!-- 2 polymul -->
+<section id="t-polymul">
+  <div class="actions"><button class="btn" data-act="polymul">Multiply two random polynomials on the chip</button>
+    <span class="muted">f × g mod (X²⁵⁶ + 1): forward NTT, forward NTT, basemul, inverse NTT, scale. The CPU checks it.</span></div>
+  <div class="steps" id="pm-steps"></div>
+  <div class="grid g3" style="margin-top:14px">
+    <div class="card"><h2>Input f</h2><canvas class="hm" id="hm-f" width="16" height="16"></canvas><div class="cap">256 coefficients as a 16 × 16 grid, value 0 … 3328</div></div>
+    <div class="card"><h2>NTT of f, layer by layer (from the chip)</h2><canvas class="hm" id="hm-layer" width="16" height="16"></canvas>
+      <div class="actions" style="margin:8px 0 0"><input type="range" id="layer" min="0" max="7" value="0" style="flex:1"><button class="btn ghost" id="play">▶ play</button></div>
+      <div class="cap" id="layer-cap">layer 0 = input</div></div>
+    <div class="card"><h2>Result vs CPU</h2><div class="big" id="pm-match">–</div><div class="muted">coefficients identical to schoolbook multiplication on the CPU</div>
+      <svg id="pm-plot" width="100%" height="150" role="img" aria-label="Chip result over CPU result"></svg>
+      <div class="legend"><span><i style="background:var(--s1)"></i>CPU</span><span><i style="background:var(--s2)"></i>chip</span></div></div>
+  </div>
+</section>
+
+<!-- 3 key exchange -->
+<section id="t-kex">
+  <div class="actions">
+    <button class="btn" data-act="keygen">1 · Alice: generate keys</button>
+    <button class="btn" data-act="encaps">2 · Bob: encapsulate</button>
+    <button class="btn" data-act="decaps">3 · Alice: decapsulate</button>
+    <button class="btn ghost" data-act="exchange">run all three</button>
+  </div>
+  <div class="flow">
+    <div class="card"><h3>Alice</h3>
+      <dl class="kv"><dt>seed d</dt><dd id="k-d">–</dd><dt>seed z</dt><dd id="k-z">–</dd><dt>ρ (public)</dt><dd id="k-rho">–</dd></dl>
+      <h2 style="margin-top:12px">Matrix Â (from ρ, public)</h2><div class="mini" id="k-A" style="grid-template-columns:repeat(4,1fr)"></div>
+      <h2 style="margin-top:12px">Secret s (small: −3 … 3) · never leaves Alice</h2><div class="mini" id="k-s"></div>
+      <div class="legend"><span><i style="background:var(--div-neg)"></i>negative</span><span><i style="background:var(--div-mid)"></i>0</span><span><i style="background:var(--div-pos)"></i>positive</span></div>
+      <h2 style="margin-top:12px">t̂ = Â∘ŝ + ê (public)</h2><div class="mini" id="k-t"></div>
+      <h2 style="margin-top:12px">Shared key (after decapsulation)</h2><div class="hex" id="k-Ka">–</div>
+    </div>
+    <div class="arrow"><div class="pk" style="background:var(--s1)">public key →</div><div id="k-eklen">800 B</div>
+      <div style="height:40px"></div><div class="pk" style="background:var(--s3)">← ciphertext</div><div id="k-clen">768 B</div>
+      <div style="height:40px"></div><div id="k-verdict" class="big" style="font-size:30px">?</div></div>
+    <div class="card"><h3>Bob</h3>
+      <h2>Alice's public key, as Bob receives it</h2><div class="hex" id="k-ek">–</div>
+      <div class="cap"><span class="hl1">blue</span>: t̂ (2 × 384 B) · <span style="color:var(--s2)">orange</span>: ρ (32 B)</div>
+      <dl class="kv" style="margin-top:12px"><dt>random m</dt><dd id="k-m">–</dd></dl>
+      <h2 style="margin-top:12px">Ciphertext to Alice</h2><div class="hex" id="k-c">–</div>
+      <h2 style="margin-top:12px">Shared key</h2><div class="hex" id="k-Kb">–</div>
+      <div class="muted" id="k-calls" style="margin-top:10px"></div>
+    </div>
+  </div>
+</section>
+
+<!-- 4 message -->
+<section id="t-msg">
+  <div class="actions"><input type="text" id="msg" value="Meet at the chip fab at 9. Bring the GDS." maxlength="300" aria-label="Message">
+    <button class="btn" data-act="send">Encrypt with the shared key and send</button>
+    <button class="btn eve" data-act="tamper_packet">Eve: flip one bit in transit</button></div>
+  <div class="grid g3">
+    <div class="card"><h2>Bob types</h2><div class="hex" id="p-plain" style="font-size:15px;color:var(--ink)">–</div></div>
+    <div class="card"><h2>On the wire (what everyone sees)</h2><div class="hex" id="p-blob">–</div>
+      <div class="cap"><span style="color:var(--s1)">nonce</span> · <span style="color:var(--s2)">ciphertext</span> · <span style="color:var(--s3)">authentication tag</span></div></div>
+    <div class="card"><h2>Alice reads</h2><div class="hex" id="p-recv" style="font-size:15px;color:var(--ink)">–</div><div class="big" id="p-ok" style="font-size:26px;margin-top:8px"></div></div>
+  </div>
+  <p class="muted">Key: the 32-byte ML-KEM shared key. Encryption: SHAKE256 keystream; integrity: HMAC-SHA3-256 (demo construction; a product would use AES-256-GCM).</p>
+</section>
+
+<!-- 5 eve -->
+<section id="t-eve">
+  <div class="actions">
+    <button class="btn eve" data-act="keygen">Eve probes the chip pins while Alice makes a key</button>
+    <button class="btn eve" data-act="tamper_ct">Eve tampers with the ciphertext</button>
+    <button class="btn eve" data-act="timing">Eve times 3 key generations</button>
+    <label class="stat"><input type="checkbox" id="mask2"> defend with masking</label>
+  </div>
+  <div class="grid g2">
+    <div class="card"><h2>Pin probe: Alice's secret, read off the chip's input pins</h2>
+      <div style="display:flex;gap:18px;align-items:flex-end;flex-wrap:wrap">
+        <div><div class="big" id="e-rec">–</div><div class="muted">of 256 secret coefficients recovered</div></div>
+        <svg id="e-hist" width="100%" height="120" style="flex:1;min-width:240px" role="img" aria-label="Values seen on the pins"></svg></div>
+      <h2 style="margin-top:12px">First 32: what Eve saw on the pins</h2><div class="coef" id="e-seen"></div>
+      <h2 style="margin-top:8px">Alice's real secret</h2><div class="coef" id="e-secret"></div>
+      <p class="muted">Layer 1 of the NTT carries the secret polynomial in the clear. With masking, the RP2350 splits it into two random shares, so the pins only ever carry noise.</p></div>
+    <div class="card"><h2>Timing attack</h2><div id="e-timing" class="muted">run “Eve times 3 key generations”</div>
+      <p class="muted">Every result appears at a fixed clock offset, so the chip's timing never depends on the data.</p>
+      <h2 style="margin-top:18px">Tampering</h2><p class="muted">A flipped ciphertext bit makes Alice's key silently random (implicit rejection), see the key exchange tab and the log.</p></div>
+  </div>
+</section>
+
+<!-- 7 system -->
+<section id="t-system">
+  <p class="lead">How the finished product would work on the Tiny Tapeout demo board. The RP2350 runs ML-KEM and keeps every
+    key and polynomial in its SRAM; one PIO state machine clocks our chip in lockstep while DMA streams the words.
+    The timeline is one ML-KEM-512 key exchange, <b>predicted</b> from the chip's exact clock counts (50 MHz) and cited
+    RP2350 cycle counts, played in slow motion.</p>
+  <div class="card"><h2>The board</h2><svg id="sys-board" viewBox="0 0 980 300" width="100%" role="img" aria-label="RP2350 and chip block diagram"></svg>
+    <div class="actions" style="margin:6px 0 0"><button class="btn" id="sys-play">▶ play the key exchange</button>
+      <label class="stat">speed <select id="sys-speed"><option value="0.0005">1 ms = 2 s</option><option value="0.001" selected>1 ms = 1 s</option><option value="0.004">1 ms = 0.25 s</option></select></label>
+      <span class="stat" id="sys-now">t = 0.000 ms</span><span class="muted" id="sys-what"></span></div>
+    <svg id="sys-tl" width="100%" height="120" role="img" aria-label="Timeline of one key exchange"></svg>
+    <div class="legend"><span><i style="background:var(--s2)"></i>RP2350 working (hashing, sampling, encoding)</span><span><i style="background:var(--s1)"></i>chip call (pins + chip, RP2350 feeding via PIO/DMA)</span></div>
+  </div>
+  <div class="grid g2" style="margin-top:14px">
+    <div class="card"><h2>One key exchange: RP2350 alone vs RP2350 + our chip (predicted)</h2><svg id="sys-cmp" width="100%" height="150" role="img" aria-label="Comparison"></svg></div>
+    <div class="card"><h2>Inside one NTT call: the three parts overlap</h2><div class="cap" style="margin:-6px 0 6px">microseconds, at 50 MHz</div><svg id="sys-ntt" width="100%" height="150" role="img" aria-label="One NTT call"></svg>
+      <p class="muted">The pins move one word in and one byte out per clock. Results come back 6 clocks after their inputs, so input, compute and output run at the same time; the RP2350 has to keep up packing and unpacking.</p></div>
+  </div>
+</section>
+
+<!-- 6 perf -->
+<section id="t-perf">
+  <div class="card"><h2>Measured here → predicted on silicon (TT board: RP2350 at 150 MHz, chip at 50 MHz)</h2>
+    <div style="overflow-x:auto"><table id="perf"><thead><tr><th>op</th><th>chip calls</th><th>this run</th><th>Python only</th><th>RP2350 alone</th><th>RP2350 + chip</th><th>vs alone</th></tr></thead>
+      <tbody><tr><td colspan="7" class="muted">run the key exchange</td></tr></tbody></table></div>
+    <h2 style="margin-top:16px">Only the chip's part (NTT, inverse NTT, basemul, scale), transfers included</h2>
+    <div style="overflow-x:auto"><table id="chippart"><thead><tr><th>op</th><th>Python</th><th>RP2350 software</th><th>silicon, pins only</th><th>RP2350 + chip (PIO+DMA)</th></tr></thead><tbody></tbody></table></div>
+    <p class="muted">The chip computes ML-KEM's arithmetic correctly and in constant time; on speed it trails the RP2350's own software, because the 8 output pins carry 3 bytes per butterfly and ¾ of ML-KEM is hashing. See docs/ARCHITECTURE_OPTIONS.md.</p>
+  </div>
+</section>
+</main>
+
+<div class="log" id="log"></div>
+<div class="tip" id="tip"></div>
+
+<script>
+const $ = id => document.getElementById(id);
+const NS = "http://www.w3.org/2000/svg";
+const el = (tag, a) => { const e = document.createElementNS(NS, tag); for (const k in a) e.setAttribute(k, a[k]); return e; };
+const css = v => getComputedStyle(document.documentElement).getPropertyValue(v).trim();
+const fmt = s => s == null ? "–" : s >= 1 ? s.toFixed(2) + " s" : s >= 1e-3 ? (s * 1e3).toFixed(2) + " ms" : (s * 1e6).toFixed(0) + " µs";
+const Q = 3329;
+let status = {}, data = {}, ver = {};
+
+try { const t = localStorage.getItem("theme"); if (t) document.documentElement.dataset.theme = t; } catch (e) {}
+$("theme").onclick = () => { const d = getComputedStyle(document.documentElement).colorScheme.includes("dark");
+  document.documentElement.dataset.theme = d ? "light" : "dark"; try { localStorage.setItem("theme", document.documentElement.dataset.theme); } catch (e) {} redrawAll(); };
+
+// ---------- tabs ----------
+function show(t) { document.querySelectorAll("nav button").forEach(b => b.classList.toggle("on", b.dataset.t === t));
+  document.querySelectorAll("main section").forEach(s => s.classList.toggle("on", s.id === "t-" + t)); redrawAll(); }
+document.querySelectorAll("nav button").forEach(b => b.onclick = () => show(b.dataset.t));
+document.querySelectorAll("[data-go]").forEach(b => b.onclick = () => show(b.dataset.go));
+
+// ---------- actions ----------
+async function act(name, body) { await fetch("/api/" + name, { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify(body || {}) }); poll(); }
+document.querySelectorAll("[data-act]").forEach(b => b.onclick = () => act(b.dataset.act, b.dataset.act === "send" ? { msg: $("msg").value } : {}));
+for (const id of ["mask", "mask2"]) $(id).onchange = e => act("mask", { on: e.target.checked });
+
+// ---------- tooltip ----------
+const tip = $("tip");
+function hover(node, text) { node.addEventListener("mousemove", ev => { tip.style.display = "block"; tip.textContent = typeof text === "function" ? text(ev) : text;
+  tip.style.left = ev.clientX + 12 + "px"; tip.style.top = ev.clientY + 12 + "px"; }); node.addEventListener("mouseleave", () => tip.style.display = "none"); }
+
+// ---------- colour scales ----------
+function hexToRgb(h) { h = h.replace("#", ""); return [0, 2, 4].map(i => parseInt(h.slice(i, i + 2), 16)); }
+function mix(a, b, t) { return a.map((v, i) => Math.round(v + (b[i] - v) * t)); }
+function seqColor(v) { const lo = hexToRgb(css("--surface-2")), hi = hexToRgb(css("--s1")); return mix(lo, hi, v / (Q - 1)); }
+function divColor(v, m) { const mid = hexToRgb(css("--div-mid")); const t = Math.min(1, Math.abs(v) / m);
+  return v < 0 ? mix(mid, hexToRgb(css("--div-neg")), t) : mix(mid, hexToRgb(css("--div-pos")), t); }
+function heat(canvas, vals, color) { const ctx = canvas.getContext("2d"); const img = ctx.createImageData(16, 16);
+  vals.forEach((v, i) => { const c = color(v); img.data.set([c[0], c[1], c[2], 255], i * 4); }); ctx.putImageData(img, 0, 0);
+  canvas.onmousemove = ev => { const r = canvas.getBoundingClientRect(); const i = Math.floor((ev.clientY - r.top) / r.height * 16) * 16 + Math.floor((ev.clientX - r.left) / r.width * 16);
+    if (i >= 0 && i < 256) { tip.style.display = "block"; tip.textContent = `coefficient ${i}: ${vals[i]}`; tip.style.left = ev.clientX + 12 + "px"; tip.style.top = ev.clientY + 12 + "px"; } };
+  canvas.onmouseleave = () => tip.style.display = "none"; }
+function miniHeat(container, polys, color, labels) { container.innerHTML = "";
+  polys.forEach((p, i) => { const d = document.createElement("div"); const c = document.createElement("canvas"); c.width = c.height = 16; c.className = "hm";
+    d.appendChild(c); const cap = document.createElement("div"); cap.className = "cap"; cap.textContent = labels[i]; d.appendChild(cap); container.appendChild(d); heat(c, p, color); }); }
+
+// ---------- live pins ----------
+function drawPins() { const svg = $("pins"); svg.innerHTML = ""; const p = status.pins; const W = svg.clientWidth || 1000, H = 92;
+  if (!p) { const t = el("text", { x: 0, y: 50, fill: css("--ink-3"), "font-size": 13 }); t.textContent = "chip pins: idle — click an action to see the real traffic"; svg.appendChild(t); return; }
+  const n = Math.min(p.stim.length, Math.floor((W - 70) / 22)), cw = (W - 70) / n;
+  const rows = [["valid", 6], ["coeff in", 28], ["uo_out", 60]];
+  rows.forEach(([name, y]) => { const t = el("text", { x: 0, y: y + 13, fill: css("--ink-3"), "font-size": 11 }); t.textContent = name; svg.appendChild(t); });
+  let path = "";
+  for (let i = 0; i < n; i++) { const w = p.stim[i], v = (w >> 12) & 1, x = 70 + i * cw;
+    path += `${i ? "L" : "M"}${x},${v ? 6 : 20} L${x + cw},${v ? 6 : 20} `;
+    if (v) { const din = ((w >> 8) & 15) << 8 | (w & 255); svg.appendChild(el("rect", { x: x + 1, y: 28, width: cw - 2, height: 22, rx: 3, fill: css("--s1"), opacity: .18 }));
+      const t = el("text", { x: x + cw / 2, y: 43, "text-anchor": "middle", fill: css("--ink"), "font-size": 9.5 }); t.textContent = din; svg.appendChild(t); }
+    if (p.uo[i]) { svg.appendChild(el("rect", { x: x + 1, y: 60, width: cw - 2, height: 22, rx: 3, fill: css("--s2"), opacity: .22 }));
+      const t = el("text", { x: x + cw / 2, y: 75, "text-anchor": "middle", fill: css("--ink"), "font-size": 10 }); t.textContent = p.uo[i].toString(16).padStart(2, "0").toUpperCase(); svg.appendChild(t); } }
+  svg.appendChild(el("path", { d: path, stroke: css("--s3"), "stroke-width": 2, fill: "none" }));
+  const t = el("text", { x: 0, y: 97, fill: css("--ink-3"), "font-size": 11 }); t.textContent = `live from the chip — latest batch: ${p.op}, chip call #${p.n}, first ${n} clocks`; svg.appendChild(t); }
+
+// ---------- pinout ----------
+function drawPinout() { const svg = $("pinout"); svg.innerHTML = "";
+  svg.appendChild(el("rect", { x: 190, y: 30, width: 180, height: 190, rx: 10, fill: css("--surface-2"), stroke: css("--border") }));
+  const c = el("text", { x: 280, y: 120, "text-anchor": "middle", fill: css("--ink"), "font-size": 15, "font-weight": 700 }); c.textContent = "tt_um NTT"; svg.appendChild(c);
+  const c2 = el("text", { x: 280, y: 140, "text-anchor": "middle", fill: css("--ink-3"), "font-size": 12 }); c2.textContent = "sky130 · 2×2 tiles"; svg.appendChild(c2);
+  const L = [["ui_in[7:0]", "coefficient bits 7:0", "--s1"], ["uio_in[3:0]", "coefficient bits 11:8", "--s1"], ["uio_in[4]", "valid", "--s3"], ["uio_in[5]", "sof (start of job)", "--s3"], ["uio_in[7:6]", "op: NTT / INTT / basemul / scale", "--s3"]];
+  L.forEach(([p, d, col], i) => { const y = 55 + i * 36; svg.appendChild(el("line", { x1: 150, x2: 190, y1: y, y2: y, stroke: css(col), "stroke-width": 3 }));
+    const t = el("text", { x: 145, y: y - 3, "text-anchor": "end", fill: css("--ink"), "font-size": 12, "font-weight": 600 }); t.textContent = p; svg.appendChild(t);
+    const t2 = el("text", { x: 145, y: y + 12, "text-anchor": "end", fill: css("--ink-3"), "font-size": 11 }); t2.textContent = d; svg.appendChild(t2); });
+  svg.appendChild(el("line", { x1: 370, x2: 410, y1: 125, y2: 125, stroke: css("--s2"), "stroke-width": 3 }));
+  const o = el("text", { x: 415, y: 122, fill: css("--ink"), "font-size": 12, "font-weight": 600 }); o.textContent = "uo_out[7:0]"; svg.appendChild(o);
+  const o2 = el("text", { x: 415, y: 137, fill: css("--ink-3"), "font-size": 11 }); o2.textContent = "result bytes, fixed delay"; svg.appendChild(o2); }
+
+// ---------- polymul ----------
+let layerTimer = null;
+function drawPolymul() { const d = data.polymul || {}; const names = ["forward NTT of f", "forward NTT of g", "basemul", "inverse NTT", "scale"];
+  const steps = d.steps || []; const busy = status.busy === "polymul"; const cur = (status.progress || {}).op;
+  $("pm-steps").innerHTML = names.map((n, i) => { const s = steps[i]; const cls = s && !busy ? "done" : (busy && cur === n ? "run" : (busy && s ? "done" : ""));
+    return `<div class="stepbox ${cls}"><b>${n}</b><span>${s ? `${fmt(s.wall_s)} on this rig · ${s.silicon_us.toFixed(0)} µs on silicon` : "–"}</span></div>`; }).join("");
+  if (!d.f) return;
+  heat($("hm-f"), d.f, seqColor); drawLayer();
+  $("pm-match").innerHTML = `<span class="${d.match === 256 ? "ok" : "bad"}">${d.match}/256 ✓</span>`;
+  const svg = $("pm-plot"); svg.innerHTML = ""; const W = svg.clientWidth || 300, H = 150, sx = i => i / 255 * (W - 4) + 2, sy = v => H - 4 - v / (Q - 1) * (H - 8);
+  svg.appendChild(el("path", { d: d.ref.map((v, i) => `${i ? "L" : "M"}${sx(i)},${sy(v)}`).join(" "), stroke: css("--s1"), "stroke-width": 1.5, fill: "none" }));
+  d.out.forEach((v, i) => { if (i % 2 === 0) { const c = el("circle", { cx: sx(i), cy: sy(v), r: 2.6, fill: css("--s2"), stroke: css("--surface"), "stroke-width": 1 }); hover(c, `coefficient ${i}: chip ${v}, CPU ${d.ref[i]}`); svg.appendChild(c); } }); }
+function drawLayer() { const d = data.polymul || {}; if (!d.layers) return; const k = +$("layer").value; const L = d.layers[Math.min(k, d.layers.length - 1)];
+  heat($("hm-layer"), L, seqColor); $("layer-cap").textContent = k === 0 ? "layer 0 = input f (before the NTT)" : `after layer ${k} of 7 (butterfly span ${128 >> (k - 1)})${k === 7 ? " = NTT(f)" : ""}`; }
+$("layer").oninput = drawLayer;
+$("play").onclick = () => { if (layerTimer) { clearInterval(layerTimer); layerTimer = null; $("play").textContent = "▶ play"; return; }
+  $("play").textContent = "❚❚ pause"; $("layer").value = 0; drawLayer();
+  layerTimer = setInterval(() => { const v = (+$("layer").value + 1) % 8; $("layer").value = v; drawLayer(); }, 700); };
+
+// ---------- key exchange ----------
+function hexSpan(h, cls) { return `<span class="${cls}">${h}</span>`; }
+function spaced(h) { return h.replace(/(..)/g, "$1 ").trim(); }
+function drawKex() { const d = data.kex || {}; if (!d.d) return;
+  $("k-d").textContent = d.d; $("k-z").textContent = d.z; $("k-rho").textContent = d.rho;
+  const k = d.A.length;
+  miniHeat($("k-A"), d.A.flat(), seqColor, d.A.flatMap((r, i) => r.map((_, j) => `Â[${i}][${j}]`)));
+  miniHeat($("k-s"), d.s, v => divColor(v, 3), d.s.map((_, i) => `s[${i}]`));
+  miniHeat($("k-t"), d.t_hat, seqColor, d.t_hat.map((_, i) => `t̂[${i}]`));
+  const tlen = 384 * k * 2; $("k-ek").innerHTML = hexSpan(spaced(d.ek.slice(0, tlen)), "hl1") + " " + hexSpan(spaced(d.ek.slice(tlen)), "hl2");
+  $("k-eklen").textContent = `${d.ek.length / 2} B`;
+  $("k-m").textContent = d.m || "–"; $("k-c").textContent = d.c ? spaced(d.c) : "–"; $("k-clen").textContent = d.c ? `${d.c.length / 2} B` : "";
+  $("k-Kb").textContent = d.K_bob ? spaced(d.K_bob) : "–"; $("k-Ka").textContent = d.K_alice ? spaced(d.K_alice) : "–";
+  $("k-verdict").innerHTML = d.K_alice ? (d.match ? '<span class="ok">keys match ✓</span>' : '<span class="bad">different ✗</span>') : "?";
+  const c = s => s ? Object.values(s.calls).reduce((a, b) => a + b, 0) : 0;
+  $("k-calls").textContent = `chip calls: keygen ${c(d.keygen)}, encaps ${c(d.encaps)}, decaps ${c(d.decaps)}${d.standard ? " · keys identical to pure-software FIPS 203 ✓" : ""}`; }
+
+// ---------- message ----------
+function drawMsg() { const p = data.packet || {}; if (!p.blob) return;
+  $("p-plain").textContent = p.plain;
+  const bytes = p.blob.match(/../g), nN = 16, nT = 32;
+  $("p-blob").innerHTML = bytes.map((h, i) => { const cls = i === p.flip ? "flip" : i < nN ? "hl1" : i >= bytes.length - nT ? "hl3" : "hl2";
+    return `<span class="${cls}"${i === p.flip ? ' title="Eve flipped one bit here"' : ""}>${h}</span>`; }).join(" ");
+  $("p-recv").textContent = p.ok ? p.received : "— nothing: packet rejected —";
+  $("p-ok").innerHTML = p.ok ? '<span class="ok">authentic ✓</span>' : '<span class="bad">tampered ✗ rejected</span>'; }
+
+// ---------- eve ----------
+function drawEve() { const e = data.eve || {};
+  if (e.bins) { $("e-rec").textContent = e.recovered; $("e-rec").className = "big " + (e.recovered > 20 ? "bad" : "ok");
+    const svg = $("e-hist"); svg.innerHTML = ""; const W = svg.clientWidth || 300, H = 100, n = e.bins.length, bw = W / n, mx = Math.max(...e.bins, 1);
+    e.bins.forEach((v, i) => { const h = v / mx * (H - 6); const r = el("rect", { x: i * bw + 1, y: H - h, width: Math.max(bw - 2, 1), height: Math.max(h, v ? 2 : 0), rx: 2, fill: css(i === 16 ? "--s2" : "--s1") });
+      hover(r, `${Math.round(i * Q / 33 - 1664)} … ${Math.round((i + 1) * Q / 33 - 1664)}: ${v} values`); svg.appendChild(r); });
+    svg.appendChild(el("line", { x1: 0, x2: W, y1: H, y2: H, stroke: css("--grid") }));
+    [[0, "start", "−1664"], [W / 2, "middle", "0"], [W, "end", "+1664"]].forEach(([x, a, t]) => { const tx = el("text", { x, y: H + 14, "text-anchor": a, fill: css("--ink-3"), "font-size": 11 }); tx.textContent = t; svg.appendChild(tx); });
+    $("e-seen").innerHTML = e.seen.map((v, i) => `<div class="${e.guess[i] !== null && e.guess[i] === e.secret[i] ? "hit" : ""}">${v}</div>`).join("");
+    $("e-secret").innerHTML = e.secret.map(v => `<div>${v}</div>`).join(""); }
+  if (e.timing) $("e-timing").innerHTML = "<table><tr><th>secret (first bytes)</th><th>chip calls</th><th>chip clocks</th></tr>" +
+    e.timing.map(r => `<tr><td>${r.secret}…</td><td>${r.calls}</td><td>${r.clocks.toLocaleString()}</td></tr>`).join("") + "</table>"; }
+
+// ---------- perf ----------
+function drawPerf() { const P = (data.perf || {}).ops || {}; const ops = ["keygen", "encaps", "decaps"].filter(o => P[o]); if (!ops.length) return;
+  $("perf").tBodies[0].innerHTML = ops.map(o => { const p = P[o], n = Object.values(p.calls).reduce((a, b) => a + b, 0);
+    return `<tr><td>${o}${p.masked ? " (masked)" : ""}</td><td>${n}</td><td>${fmt(p.measured_s)}</td><td>${fmt(p.python_s)}</td><td>${fmt(p.pred.rp2350_alone_s)}</td><td>${fmt(p.pred.rp2350_plus_chip_s)}</td><td>${p.pred.speedup_vs_rp2350.toFixed(2)}×</td></tr>`; }).join("");
+  $("chippart").tBodies[0].innerHTML = ops.map(o => { const c = P[o].chip_part;
+    return `<tr><td>${o}</td><td>${fmt(c.python_pc_s)}</td><td>${fmt(c.rp2350_sw_s)}</td><td>${fmt(c.silicon_pins_only_s)}</td><td>${fmt(c.rp2350_chip_pio_dma_s)}</td></tr>`; }).join(""); }
+
+// ---------- final system ----------
+let sysT = 0, sysPlaying = false, sysLast = 0;
+function sysSegments() { const S = data.system || {}; if (!S.ops) return [];
+  let off = 0, out = [];
+  for (const op of ["keygen", "encaps", "decaps"]) { const o = S.ops[op]; o.segments.forEach(g => out.push({ ...g, op, start: g.start + off })); out.push({ kind: "gap", op, start: off + o.total, dur: 0 }); off += o.total; }
+  return out; }
+function sysTotal() { const S = data.system || {}; return S.ops ? ["keygen", "encaps", "decaps"].reduce((a, o) => a + S.ops[o].total, 0) : 0; }
+function drawBoard(active) { const svg = $("sys-board"); svg.innerHTML = ""; const on = k => active === k;
+  const box = (x, y, w, h, title, sub, hot, col) => { svg.appendChild(el("rect", { x, y, width: w, height: h, rx: 10, fill: css(hot ? col : "--surface-2"), "fill-opacity": hot ? .22 : 1, stroke: css(hot ? col : "--border"), "stroke-width": hot ? 2.5 : 1 }));
+    const t = el("text", { x: x + 12, y: y + 22, fill: css("--ink"), "font-size": 14, "font-weight": 700 }); t.textContent = title; svg.appendChild(t);
+    sub.forEach((l, i) => { const u = el("text", { x: x + 12, y: y + 42 + i * 16, fill: css("--ink-3"), "font-size": 12 }); u.textContent = l; svg.appendChild(u); }); };
+  svg.appendChild(el("rect", { x: 10, y: 10, width: 560, height: 280, rx: 14, fill: "none", stroke: css("--border"), "stroke-dasharray": "5 4" }));
+  const lab = el("text", { x: 22, y: 30, fill: css("--ink-3"), "font-size": 12 }); lab.textContent = "RP2350 (Tiny Tapeout demo board)"; svg.appendChild(lab);
+  box(25, 45, 250, 110, "M33 core 0", ["ML-KEM-512 itself:", "SHA-3 / SHAKE, sampling,", "encoding, the final compare"], on("host"), "--s2");
+  box(295, 45, 260, 110, "M33 core 1", ["feeds the chip:", "packs input words, unpacks", "the result bytes"], on("chip"), "--s1");
+  box(25, 170, 250, 105, "SRAM (520 KB)", ["keys, polynomials,", "matrix Â, ciphertext"], on("host"), "--s2");
+  box(295, 170, 260, 105, "PIO + DMA", ["clocks the chip, 1 word in", "and 1 byte out per clock,", "in lockstep (no handshake)"], on("chip"), "--s1");
+  // bus
+  const busY = [200, 245]; const hot = on("chip");
+  svg.appendChild(el("line", { x1: 555, x2: 700, y1: busY[0], y2: busY[0], stroke: css(hot ? "--s1" : "--border"), "stroke-width": 6 }));
+  svg.appendChild(el("line", { x1: 700, x2: 555, y1: busY[1], y2: busY[1], stroke: css(hot ? "--s3" : "--border"), "stroke-width": 4 }));
+  const b1 = el("text", { x: 575, y: busY[0] - 8, fill: css("--ink-2"), "font-size": 11 }); b1.textContent = "12 data + valid, sof, op →"; svg.appendChild(b1);
+  const b2 = el("text", { x: 575, y: busY[1] + 18, fill: css("--ink-2"), "font-size": 11 }); b2.textContent = "← 8 result bits"; svg.appendChild(b2);
+  const b3 = el("text", { x: 575, y: 175, fill: css("--ink-3"), "font-size": 11 }); b3.textContent = "clk (up to ~50–66 MHz)"; svg.appendChild(b3);
+  if (hot) { const ph = (performance.now() / 400) % 1; for (let k = 0; k < 4; k++) { const f = (ph + k / 4) % 1;
+      svg.appendChild(el("circle", { cx: 555 + f * 145, cy: busY[0], r: 5, fill: css("--s1") }));
+      svg.appendChild(el("circle", { cx: 700 - f * 145, cy: busY[1], r: 4, fill: css("--s3") })); } }
+  box(700, 45, 265, 230, "our chip (TT, 2×2 tiles)", ["input capture", "control: job, counters", "twiddle ROM (128 × 12 bit)", "multiplier 12×12, K-RED", "adders, accumulators", "output packer (ByteEncode12)", "", "stores nothing: every", "polynomial lives in the RP2350"], on("chip"), "--s1"); }
+function drawTimeline() { const svg = $("sys-tl"); svg.innerHTML = ""; const segs = sysSegments(); if (!segs.length) return;
+  const W = svg.clientWidth || 900, T = sysTotal(), x = t => t / T * (W - 2) + 1;
+  let off = 0; const S = data.system;
+  ["keygen", "encaps", "decaps"].forEach(op => { const o = S.ops[op]; const t = el("text", { x: x(off) + 2, y: 14, fill: css("--ink-2"), "font-size": 12, "font-weight": 600 });
+    t.textContent = `${op} · ${(o.total * 1e3).toFixed(2)} ms`; svg.appendChild(t);
+    svg.appendChild(el("line", { x1: x(off), x2: x(off), y1: 0, y2: 90, stroke: css("--grid") })); off += o.total; });
+  segs.filter(g => g.dur > 0).forEach(g => { const r = el("rect", { x: x(g.start), y: g.kind === "host" ? 24 : 54, width: Math.max(x(g.start + g.dur) - x(g.start) - 0.6, 0.8), height: 24, rx: 2, fill: css(g.kind === "host" ? "--s2" : "--s1") });
+    hover(r, g.kind === "host" ? `RP2350 host work: ${(g.dur * 1e6).toFixed(0)} µs` : `chip: ${g.name}, ${(g.dur * 1e6).toFixed(1)} µs (pins alone ${(g.pins * 1e6).toFixed(1)} µs)`); svg.appendChild(r); });
+  const l1 = el("text", { x: 2, y: 112, fill: css("--ink-3"), "font-size": 11 }); l1.textContent = "0 ms"; svg.appendChild(l1);
+  const l2 = el("text", { x: W, y: 112, "text-anchor": "end", fill: css("--ink-3"), "font-size": 11 }); l2.textContent = `${(T * 1e3).toFixed(2)} ms`; svg.appendChild(l2);
+  svg.appendChild(el("line", { x1: x(sysT), x2: x(sysT), y1: 18, y2: 98, stroke: css("--ink"), "stroke-width": 2 })); }
+function sysActive() { const g = sysSegments().find(s => s.dur > 0 && sysT >= s.start && sysT < s.start + s.dur); return g; }
+function drawSystem() { if (!data.system || !data.system.ops) return; const g = sysPlaying || sysT > 0 ? sysActive() : null;
+  drawBoard(g ? g.kind : null); drawTimeline();
+  $("sys-now").textContent = `t = ${(sysT * 1e3).toFixed(3)} ms on the TT board`;
+  $("sys-what").textContent = g ? (g.kind === "host" ? `${g.op}: RP2350 hashing / sampling / encoding` : `${g.op}: chip ${g.name} (${(g.dur * 1e6).toFixed(0)} µs)`) : "";
+  // comparison
+  const svg = $("sys-cmp"); svg.innerHTML = ""; const S = data.system, W = svg.clientWidth || 400;
+  const alone = ["keygen", "encaps", "decaps"].reduce((a, o) => a + S.ops[o].sw_total, 0), withc = sysTotal(), mx = Math.max(alone, withc) * 1.25;
+  [["RP2350 alone", alone, "--s2"], ["RP2350 + our chip", withc, "--s1"]].forEach(([n, v, c], i) => { const y = 20 + i * 55;
+    const t = el("text", { x: 0, y: y + 4, fill: css("--ink-2"), "font-size": 12 }); t.textContent = n; svg.appendChild(t);
+    svg.appendChild(el("rect", { x: 0, y: y + 12, width: v / mx * W, height: 20, rx: 4, fill: css(c) }));
+    const u = el("text", { x: v / mx * W + 6, y: y + 27, fill: css("--ink"), "font-size": 12 }); u.textContent = `${(v * 1e3).toFixed(2)} ms`; svg.appendChild(u); });
+  const ft = el("text", { x: 0, y: 140, fill: css("--ink-3"), "font-size": 11 }); ft.textContent = `${(alone / withc).toFixed(2)}× — the chip is correct and constant-time, but ¾ of ML-KEM is hashing, which stays on the RP2350`; svg.appendChild(ft);
+  // one NTT
+  const n = S.ntt_detail, sv = $("sys-ntt"); sv.innerHTML = ""; const W2 = sv.clientWidth || 400, m2 = n.total_dma * 1.15, xs = t => 120 + t / m2 * (W2 - 160);
+  [["TX pins", 0, n.tx_s, "--s3"], ["chip calc", 0, n.calc_s, "--s1"], ["RX pins", 0.12e-6, n.rx_s, "--s3"], ["RP2350 pack+unpack", 0, n.pack_s + n.unpack_s, "--s2"]].forEach(([nm, a, d, c], i) => { const y = 8 + i * 30;
+    const t = el("text", { x: 0, y: y + 15, fill: css("--ink-2"), "font-size": 12 }); t.textContent = nm; sv.appendChild(t);
+    sv.appendChild(el("rect", { x: xs(a), y, width: xs(a + d) - xs(a), height: 20, rx: 3, fill: css(c), opacity: .85 }));
+    const u = el("text", { x: xs(a + d) + 5, y: y + 15, fill: css("--ink"), "font-size": 11 }); u.textContent = `${(d * 1e6).toFixed(1)}`; sv.appendChild(u); }); }
+$("sys-play").onclick = () => { sysPlaying = !sysPlaying; $("sys-play").textContent = sysPlaying ? "❚❚ pause" : "▶ play the key exchange"; if (sysPlaying && sysT >= sysTotal()) sysT = 0; sysLast = performance.now(); requestAnimationFrame(sysTick); };
+function sysTick(now) { if (!sysPlaying) return; const dt = (now - sysLast) / 1000; sysLast = now; sysT += dt * +$("sys-speed").value;
+  if (sysT >= sysTotal()) { sysT = sysTotal(); sysPlaying = false; $("sys-play").textContent = "▶ play again"; }
+  if ($("t-system").classList.contains("on")) drawSystem(); if (sysPlaying) requestAnimationFrame(sysTick); }
+
+function redrawAll() { drawPins(); drawPinout(); drawPolymul(); drawKex(); drawMsg(); drawEve(); drawPerf(); drawSystem(); }
+
+// ---------- polling ----------
+async function poll() {
+  try { const r = await fetch("/api/status"); status = await r.json(); } catch (e) { $("src").textContent = "server not reachable"; return; }
+  header();
+  for (const s in status.ver) if (status.ver[s] !== ver[s]) { ver[s] = status.ver[s]; data[s] = await (await fetch("/api/data/" + s)).json(); }
+  redrawAll(); }
+function header() {
+  $("src").textContent = "chip: " + status.source; $("title").textContent = status.ps + " on our NTT chip";
+  $("busy").textContent = status.busy ? `working: ${(status.progress || {}).op || status.busy}${(status.progress || {}).last ? " · " + status.progress.last : ""}` : "idle";
+  $("busy").className = "badge" + (status.busy ? " live" : "");
+  $("calls").textContent = status.calls_total.toLocaleString(); $("clocks").textContent = status.clocks_total.toLocaleString();
+  $("mask").checked = $("mask2").checked = status.masked;
+  document.querySelectorAll("[data-act]").forEach(b => b.disabled = !!status.busy);
+  $("log").innerHTML = status.log.slice().reverse().map(l => `<div class="${l.kind}"><span class="muted">${l.t}</span> <span class="who">${l.who}</span>${l.msg}</div>`).join(""); }
+if (window.__INIT) { status = window.__INIT.status; data = window.__INIT.data; for (const s in status.ver) ver[s] = status.ver[s]; header(); }
+setInterval(poll, 350);
+if (window.__INIT) { if (location.hash.length > 1) show(location.hash.slice(1)); else redrawAll(); }
+poll();
+if (location.hash.length > 1) show(location.hash.slice(1));
+window.addEventListener("hashchange", () => show(location.hash.slice(1)));
+</script>
+</body>
+</html>

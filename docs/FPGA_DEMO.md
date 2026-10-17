@@ -48,7 +48,28 @@ and builds the next layer from them.
 Rehearse without the board: `python3 host/demo.py --sim`. It uses the Python model, and the
 pin figure's title then says "simulated".
 
-## Live interactive demo (for presenting)
+## Showcase website (for presenting)
+
+```bash
+make -C fpga prog                  # load the chip onto the Tang Nano
+python3 host/showcase.py           # or --sim without the board; --http 8081 for another port
+# then open http://localhost:8080
+```
+
+Seven tabs, all showing real data from the chip, and a strip in the header with the most recent pin traffic
+(valid, din, uo_out):
+
+| Tab | What the audience sees |
+|---|---|
+| 1 · The chip | Pinout, the four operations, the area and the verification path |
+| 2 · Multiply polynomials | Two random polynomials, heatmaps of every NTT layer as it comes back from the chip (slider + play), the result checked against schoolbook multiplication |
+| 3 · Key exchange | Alice's seeds, matrix Â, secret s, public t̂, the 800-byte ek in hex, Bob's ciphertext and both 32-byte shared keys, with a match verdict |
+| 4 · Secret message | Your text encrypted with the shared key; the bytes on the wire; Eve flips one bit (highlighted) and Alice rejects it |
+| 5 · Eve attacks | Probing the chip pins: what Eve sees next to the real secret, 256/256 recovered without masking, 0/256 with it; the timing table |
+| 6 · Performance | Measured run, pure Python and the predicted RP2350 / RP2350 + chip times |
+| 7 · Final system | Predicted silicon timeline of one exchange on the TT demo board (RP2350 + chip), built from the real call order: animated bus, play button, and how one NTT overlaps TX / calc / RX |
+
+## Live interactive demo (older single page)
 
 ```bash
 python3 host/live_demo.py          # chip on the Tang Nano (or --sim without the board)

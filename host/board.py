@@ -69,6 +69,9 @@ class BoardBackend:
         self.chip_s = 0.0                # wall time spent in chip calls (incl. USB)
         self.bus = []                    # (call name, [12-bit words on the pins]) of every batch
         self.on_call = None              # optional progress callback(name)
+        self.on_batch = None             # optional callback(last_batch) after every streamed batch
+        self.on_layer = None             # optional callback(name, layer, coefficients) after every NTT layer
+        self.last_batch = None
 
     def _batch(self, op, units, sof):
         """units: list of input-value lists. Streams them at the protocol period, plus a tail so the
@@ -81,6 +84,9 @@ class BoardBackend:
         caps = self.emu.run_stream(stim)
         uo = [c[0] for c in caps]
         self.bus.append((self._cur, [((w >> 8) & 0xF) << 8 | (w & 0xFF) for w in stim if (w >> 12) & 1]))
+        self.last_batch = {"op": self._cur, "clocks": len(stim), "stim": stim[:72], "uo": uo[:72]}
+        if self.on_batch:
+            self.on_batch(self.last_batch)
         if self.log_first and self.first_batch is None:
             self.first_batch = (op, stim, uo)
         self.clocks[op] = self.clocks.get(op, 0) + len(stim)
@@ -106,6 +112,8 @@ class BoardBackend:
             res = self._batch(op, [(f[hi], f[lo]) for lo, hi in pairs], sof=(layer == 0))
             for (lo, hi), (r0, r1) in zip(pairs, res):
                 f[lo], f[hi] = r0, r1
+            if self.on_layer:
+                self.on_layer(self._cur, layer, list(f))
         return f
 
     def _timed(self, name, fn, *args):
