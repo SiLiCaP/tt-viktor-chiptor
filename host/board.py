@@ -9,7 +9,9 @@ paused between batches (valid low changes nothing, docs/PROTOCOL.md).
     MLKEM768(backend=be).keygen_internal(d, z)
 """
 import os
+import random
 import sys
+import time
 
 HERE = os.path.dirname(os.path.abspath(__file__))
 ROOT = os.path.dirname(HERE)
@@ -52,9 +54,16 @@ class BoardBackend:
         self.emu.set_inputs(0, 0)
         self.emu.reset(10)
         self.clocks = {}                 # op -> DUT clocks streamed
-        self.calls = {}
         self.first_batch = None          # (op, stim, uo) of the first batch, for the timing figure
         self.log_first = log_first
+        self._cur = None
+        self.reset_counters()
+
+    def reset_counters(self):
+        self.calls = {"ntt": 0, "invntt": 0, "basemul": 0, "scale": 0}
+        self.chip_s = 0.0                # wall time spent in chip calls (incl. USB)
+        self.bus = []                    # (call name, [12-bit words on the pins]) of every batch
+        self.on_call = None              # optional progress callback(name)
 
     def _batch(self, op, units, sof):
         """units: list of input-value lists. Streams them at the protocol period, plus a tail so the
@@ -66,6 +75,7 @@ class BoardBackend:
                 stim[k * period + off] = PinIn(v, True, sof and k == 0 and i == 0, op).word16()
         caps = self.emu.run_stream(stim)
         uo = [c[0] for c in caps]
+        self.bus.append((self._cur, [((w >> 8) & 0xF) << 8 | (w & 0xFF) for w in stim if (w >> 12) & 1]))
         if self.log_first and self.first_batch is None:
             self.first_batch = (op, stim, uo)
         self.clocks[op] = self.clocks.get(op, 0) + len(stim)
@@ -77,9 +87,14 @@ class BoardBackend:
             out.append(v)
         return out
 
+    def _call(self, name):
+        self.calls[name] += 1
+        self._cur = name
+        if self.on_call:
+            self.on_call(name)
+
     def _butterflies(self, op, f, inverse):
         f = list(f)
-        self.calls[op] = self.calls.get(op, 0) + 1
         for layer in range(7):                           # one batch per layer
             L = (2 << layer) if inverse else (128 >> layer)
             pairs = [(j, j + L) for start in range(0, 256, 2 * L) for j in range(start, start + L)]
@@ -88,18 +103,66 @@ class BoardBackend:
                 f[lo], f[hi] = r0, r1
         return f
 
+    def _timed(self, name, fn, *args):
+        self._call(name)
+        t = time.perf_counter()
+        r = fn(*args)
+        self.chip_s += time.perf_counter() - t
+        return r
+
     def ntt(self, f):
-        return self._butterflies(OP_CT, f, False)
+        return self._timed("ntt", self._butterflies, OP_CT, f, False)
 
     def invntt(self, f):
-        return self._butterflies(OP_GS, f, True)
+        return self._timed("invntt", self._butterflies, OP_GS, f, True)
 
     def basemul(self, f, g):
-        self.calls[OP_BASEMUL] = self.calls.get(OP_BASEMUL, 0) + 1
-        res = self._batch(OP_BASEMUL, [(g[2 * i + 1], f[2 * i + 1], g[2 * i], f[2 * i]) for i in range(128)], True)
-        return [x for pair in res for x in pair]
+        def run():
+            res = self._batch(OP_BASEMUL, [(g[2 * i + 1], f[2 * i + 1], g[2 * i], f[2 * i]) for i in range(128)], True)
+            return [x for pair in res for x in pair]
+        return self._timed("basemul", run)
 
     def scale(self, f):
-        self.calls[OP_SCALE] = self.calls.get(OP_SCALE, 0) + 1
-        res = self._batch(OP_SCALE, [(f[2 * i], f[2 * i + 1]) for i in range(128)], True)
-        return [x for pair in res for x in pair]
+        def run():
+            res = self._batch(OP_SCALE, [(f[2 * i], f[2 * i + 1]) for i in range(128)], True)
+            return [x for pair in res for x in pair]
+        return self._timed("scale", run)
+
+
+class MaskedBackend:
+    """Host-side masking (handoff section 5.2): every operand is split into two random shares, each share
+    goes through the chip on its own, and the results are added. All four ops are linear in the split
+    operand, so the result is unchanged, but the chip's pins only ever carry uniformly random shares.
+    Costs twice the chip calls."""
+
+    def __init__(self, inner, rng=None):
+        self.inner = inner
+        self.factor = inner.factor
+        self.rng = rng or random.SystemRandom()
+
+    def __getattr__(self, name):
+        return getattr(self.inner, name)
+
+    def _split(self, f):
+        s1 = [self.rng.randrange(3329) for _ in f]
+        return s1, [(a - b) % 3329 for a, b in zip(f, s1)]
+
+    @staticmethod
+    def _add(x, y):
+        return [(a + b) % 3329 for a, b in zip(x, y)]
+
+    def ntt(self, f):
+        a, b = self._split(f)
+        return self._add(self.inner.ntt(a), self.inner.ntt(b))
+
+    def invntt(self, f):
+        a, b = self._split(f)
+        return self._add(self.inner.invntt(a), self.inner.invntt(b))
+
+    def scale(self, f):
+        a, b = self._split(f)
+        return self._add(self.inner.scale(a), self.inner.scale(b))
+
+    def basemul(self, f, g):
+        a, b = self._split(f)
+        return self._add(self.inner.basemul(a, g), self.inner.basemul(b, g))

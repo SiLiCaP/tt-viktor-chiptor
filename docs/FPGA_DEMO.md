@@ -48,6 +48,52 @@ and builds the next layer from them.
 Rehearse without the board: `python3 host/demo.py --sim`. It uses the Python model, and the
 pin figure's title then says "simulated".
 
+## Live interactive demo (for presenting)
+
+```bash
+python3 host/live_demo.py          # chip on the Tang Nano (or --sim without the board)
+# then open http://localhost:8080 in the browser
+```
+
+| Button | What happens |
+|---|---|
+| **1 · Exchange keys** | Alice runs keygen and Bob encapsulates, both with every NTT/basemul on the chip; then Alice decapsulates. The chip-call counters run live, and the keys match |
+| **2 · Send encrypted packet** | Bob encrypts your message with the shared key; Alice authenticates and decrypts it |
+| **Eve: tamper ciphertext** | One bit flipped in Bob's ML-KEM ciphertext: Alice's key silently becomes unrelated (implicit rejection) |
+| **Eve: tamper packet** | One bit flipped in the packet: the MAC rejects it |
+| **Eve: eavesdrop** | Eve has everything on the wire, but no key that opens the packet |
+| **Eve: timing attack** | 3 key generations with different secrets: chip clocks are identical (constant time) |
+| **host-side masking** toggle | Shows the chip-specific risk and its fix. Without masking, Eve probing Alice's chip pins during keygen recovers **256/256** secret coefficients, because layer 1 of the NTT carries them in the clear. With masking she sees uniform noise (0/256), at the cost of 2× chip calls |
+
+The performance panel shows, per operation: the measured run (host + chip), pure Python, the
+coefficients, and the predicted RP2350 and RP2350 + chip times. An exchange takes about 11 s on the board
+(22 s masked), almost all of it USB; on silicon the chip part takes about 1 ms.
+
+## Performance log and the coefficients
+
+```bash
+python3 tools/perf.py bench        # Python-only vs chip on FPGA, + predictions; appends to perf/perf_log.jsonl
+python3 tools/perf.py plot         # reports/perf/01_journey.png, 02_measured_vs_predicted.png
+python3 tools/perf.py show         # the whole log as a table
+```
+
+Every run of `demo.py`, `live_demo.py` and `perf.py bench` is appended to `perf/perf_log.jsonl`,
+which is committed, so the speed history is kept. The first entries are the numbers measured
+earlier on Oct 17: RTL simulation, the 115.2 kbaud FPGA replay, gate-level simulation, and the 1 Mbaud replay.
+
+The coefficients (`sim/perf_model.py`; every input is in `sim/config.py`, marked cited, measured or ASSUMPTION):
+
+- **K_py** = RP2350 software time / Python-only time. RP2350 time = pqm4 m4fspeed cycles / 150 MHz.
+- **K_host** = RP2350 host-side time / Python host-side time, for the work the chip never touches:
+  pqm4 cycles minus the cited software cost of the offloaded calls (ePrint 2022/112).
+- **K_chip** = chip time on silicon / chip time on the FPGA. Silicon chip time = exact protocol clocks
+  per call / f_chip, plus RP2350 bookkeeping. f_chip is the lowest of: the 50 MHz timing target, the measured
+  STA (87 MHz typical, 44.8 MHz slow corner), the 50 MHz I/O assumption and the PIO limit.
+
+Predicted RP2350 alone = Python-only × K_py. Predicted RP2350 + chip = host part × K_host + chip part × K_chip.
+**Current result:** RP2350 + chip comes out 0.67–0.78× the speed of the RP2350 alone. Most of
+ML-KEM is hashing (67–75%), which this chip doesn't do. That's the case for option (b), SHA-3 on chip.
+
 ## More checks
 
 ```bash

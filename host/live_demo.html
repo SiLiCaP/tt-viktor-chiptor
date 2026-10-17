@@ -1,0 +1,337 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>NTT Chip Live</title>
+<style>
+:root {
+  color-scheme: light;
+  --surface-0: #f4f3ef; --surface-1: #fcfcfb; --surface-2: #efeee9; --border: #dcdad3;
+  --text-primary: #0b0b0b; --text-secondary: #52514e; --text-muted: #7a7974;
+  --series-1: #2a78d6; --series-2: #eb6834; --series-3: #1baf7a; --series-4: #eda100;
+  --good: #1a7f37; --bad: #c62828; --eve: #6250d6;
+  --grid: #e6e5e0;
+}
+@media (prefers-color-scheme: dark) {
+  :root:where(:not([data-theme="light"])) {
+    color-scheme: dark;
+    --surface-0: #121211; --surface-1: #1a1a19; --surface-2: #232321; --border: #34332f;
+    --text-primary: #f0efec; --text-secondary: #c3c2b7; --text-muted: #8f8e86;
+    --series-1: #3987e5; --series-2: #d95926; --series-3: #199e70; --series-4: #c98500;
+    --good: #3fb950; --bad: #f05252; --eve: #9085e9; --grid: #2c2b28;
+  }
+}
+:root[data-theme="dark"] {
+  color-scheme: dark;
+  --surface-0: #121211; --surface-1: #1a1a19; --surface-2: #232321; --border: #34332f;
+  --text-primary: #f0efec; --text-secondary: #c3c2b7; --text-muted: #8f8e86;
+  --series-1: #3987e5; --series-2: #d95926; --series-3: #199e70; --series-4: #c98500;
+  --good: #3fb950; --bad: #f05252; --eve: #9085e9; --grid: #2c2b28;
+}
+* { box-sizing: border-box; }
+body { margin: 0; background: var(--surface-0); color: var(--text-primary);
+       font: 15px/1.45 system-ui, -apple-system, "Segoe UI", Roboto, sans-serif; }
+header { display: flex; flex-wrap: wrap; gap: 12px 20px; align-items: center; padding: 16px 24px;
+         border-bottom: 1px solid var(--border); background: var(--surface-1); }
+h1 { font-size: 20px; margin: 0; }
+.badge { font-size: 13px; padding: 3px 10px; border-radius: 999px; background: var(--surface-2);
+         color: var(--text-secondary); border: 1px solid var(--border); }
+.spacer { flex: 1; }
+main { max-width: 1280px; margin: 0 auto; padding: 20px 16px 40px; display: grid; gap: 16px; }
+.card { background: var(--surface-1); border: 1px solid var(--border); border-radius: 12px; padding: 16px; min-width: 0; }
+.card h2 { font-size: 15px; margin: 0 0 10px; color: var(--text-secondary); font-weight: 600;
+           text-transform: uppercase; letter-spacing: .04em; }
+.stage { display: grid; grid-template-columns: 1fr 1.25fr 1fr; gap: 16px; }
+@media (max-width: 900px) { .stage { grid-template-columns: 1fr; } }
+.party h3 { margin: 0; font-size: 22px; }
+.party .role { color: var(--text-muted); font-size: 13px; margin-bottom: 10px; }
+.chip { display: flex; gap: 12px; align-items: center; padding: 10px; border-radius: 10px; background: var(--surface-2); margin: 8px 0; }
+.chip svg { flex: none; }
+.chip .n { font-size: 26px; font-weight: 700; font-variant-numeric: tabular-nums; }
+.chip .sub { font-size: 12px; color: var(--text-muted); }
+.busy svg .die { animation: pulse .6s ease-in-out infinite alternate; }
+@keyframes pulse { from { fill: var(--series-1); } to { fill: var(--series-2); } }
+.kv { display: grid; grid-template-columns: auto 1fr; gap: 4px 10px; font-size: 13px; }
+.kv dt { color: var(--text-muted); }
+.kv dd { margin: 0; font-family: ui-monospace, Menlo, monospace; overflow-wrap: anywhere; }
+.key { font-family: ui-monospace, Menlo, monospace; font-size: 14px; padding: 6px 8px; border-radius: 6px;
+       background: var(--surface-2); overflow-wrap: anywhere; }
+.match { color: var(--good); font-weight: 700; }
+.nomatch { color: var(--bad); font-weight: 700; }
+.wire { position: relative; }
+.lane { position: relative; height: 54px; border-bottom: 2px dashed var(--border); margin: 6px 0 14px; }
+.lane .lbl { position: absolute; top: 0; left: 0; font-size: 12px; color: var(--text-muted); }
+.env { position: absolute; top: 18px; padding: 4px 10px; border-radius: 6px; font-size: 13px; font-weight: 600;
+       color: #fff; white-space: nowrap; transition: left 1.1s cubic-bezier(.4,.0,.2,1); }
+.env.ek { background: var(--series-1); } .env.ct { background: var(--series-3); } .env.pk { background: var(--series-2); }
+.env.bad { outline: 3px solid var(--bad); }
+.hex { font-family: ui-monospace, Menlo, monospace; font-size: 12px; color: var(--text-muted); overflow-wrap: anywhere;
+       max-height: 3.2em; overflow: hidden; }
+.eve { margin-top: 10px; border-top: 1px solid var(--border); padding-top: 10px; }
+.eve h3 { margin: 0 0 6px; font-size: 16px; color: var(--eve); }
+.controls { display: flex; flex-wrap: wrap; gap: 10px; align-items: center; }
+button { font: inherit; font-weight: 600; padding: 9px 16px; border-radius: 8px; border: 1px solid transparent;
+         background: var(--series-1); color: #fff; cursor: pointer; }
+button.secondary { background: var(--surface-2); color: var(--text-primary); border-color: var(--border); }
+button.eve-btn { background: var(--eve); }
+button:disabled { opacity: .45; cursor: progress; }
+input[type=text] { font: inherit; padding: 8px 10px; border-radius: 8px; border: 1px solid var(--border);
+                   background: var(--surface-1); color: var(--text-primary); min-width: 0; flex: 1 1 220px; }
+.toggle { display: inline-flex; align-items: center; gap: 8px; font-size: 14px; cursor: pointer; user-select: none; }
+.toggle input { width: 18px; height: 18px; }
+.panels { display: grid; grid-template-columns: 1.3fr 1fr; gap: 16px; }
+@media (max-width: 900px) { .panels { grid-template-columns: 1fr; } }
+table { border-collapse: collapse; width: 100%; font-size: 13px; font-variant-numeric: tabular-nums; }
+th, td { padding: 6px 8px; text-align: right; border-bottom: 1px solid var(--grid); }
+th:first-child, td:first-child { text-align: left; }
+th { color: var(--text-muted); font-weight: 600; }
+.big { font-size: 40px; font-weight: 800; line-height: 1.1; }
+.muted { color: var(--text-muted); font-size: 13px; }
+.log { font-size: 13px; max-height: 260px; overflow: auto; display: flex; flex-direction: column-reverse; }
+.log div { padding: 4px 0; border-bottom: 1px solid var(--grid); }
+.log .who { font-weight: 700; margin-right: 6px; }
+.log .ok .who { color: var(--good); } .log .bad .who { color: var(--bad); } .log .eve .who { color: var(--eve); }
+.tip { position: fixed; pointer-events: none; background: var(--text-primary); color: var(--surface-1);
+       font-size: 12px; padding: 4px 8px; border-radius: 6px; display: none; z-index: 10; }
+details summary { cursor: pointer; color: var(--text-secondary); font-size: 13px; }
+.scroll-x { overflow-x: auto; }
+</style>
+</head>
+<body>
+<header>
+  <h1>ML-KEM-768 on our NTT chip</h1>
+  <span class="badge" id="source">connecting…</span>
+  <span class="spacer"></span>
+  <label class="toggle" title="Split every chip operand into two random shares"><input type="checkbox" id="mask"> host-side masking</label>
+  <button class="secondary" id="theme" title="Toggle light/dark">◐</button>
+</header>
+
+<main>
+  <div class="card controls">
+    <button id="b-exchange">1 · Exchange keys</button>
+    <input type="text" id="msg" value="Meet at the chip fab at 9. Bring the GDS." maxlength="400" aria-label="Message">
+    <button id="b-send">2 · Send encrypted packet</button>
+    <span class="spacer"></span>
+    <button class="eve-btn" id="b-tamper_ct">Eve: tamper ciphertext</button>
+    <button class="eve-btn" id="b-tamper_packet">Eve: tamper packet</button>
+    <button class="eve-btn" id="b-eavesdrop">Eve: eavesdrop</button>
+    <button class="eve-btn" id="b-timing">Eve: timing attack</button>
+  </div>
+
+  <div class="stage">
+    <div class="card party" id="alice">
+      <h3>Alice</h3><div class="role">RP2350 + our chip · receiver</div>
+      <div class="chip" id="chip-a"><svg width="44" height="44" viewBox="0 0 44 44" aria-hidden="true">
+        <rect class="die" x="8" y="8" width="28" height="28" rx="4" fill="var(--series-1)"/>
+        <g stroke="var(--text-muted)" stroke-width="2">
+        <path d="M14 2v6M22 2v6M30 2v6M14 36v6M22 36v6M30 36v6M2 14h6M2 22h6M2 30h6M36 14h6M36 22h6M36 30h6"/></g></svg>
+        <div><div class="n" id="calls-a">0</div><div class="sub" id="op-a">chip calls · idle</div></div></div>
+      <dl class="kv"><dt>public key</dt><dd id="a-ek">–</dd><dt>secret key</dt><dd id="a-dk">–</dd></dl>
+      <div class="muted" style="margin-top:10px">shared key</div><div class="key" id="a-key">–</div>
+      <div class="muted" style="margin-top:10px">inbox</div><div class="key" id="a-inbox">–</div>
+    </div>
+
+    <div class="card wire">
+      <h2>Network (public)</h2>
+      <div class="lane"><span class="lbl">public key  Alice → Bob</span><div class="env ek" id="env-ek" style="left:0;display:none">pk</div></div>
+      <div class="lane"><span class="lbl">ciphertext  Bob → Alice</span><div class="env ct" id="env-ct" style="left:80%;display:none">ct</div></div>
+      <div class="lane"><span class="lbl">packet  Bob → Alice</span><div class="env pk" id="env-pk" style="left:80%;display:none">packet</div></div>
+      <div class="hex" id="wire-hex"></div>
+      <div class="eve">
+        <h3>Eve’s probe on Alice’s chip pins</h3>
+        <div style="display:flex;gap:16px;align-items:flex-end;flex-wrap:wrap">
+          <div><div class="big" id="eve-rec">–</div><div class="muted">of 256 secret coefficients recovered</div></div>
+          <div class="scroll-x" style="flex:1;min-width:220px"><svg id="hist" width="100%" height="112" role="img" aria-label="Histogram of values Eve saw on the chip pins"></svg>
+          <div class="muted">values Eve saw on the input pins during the 1st NTT layer of keygen</div></div>
+        </div>
+      </div>
+    </div>
+
+    <div class="card party" id="bob">
+      <h3>Bob</h3><div class="role">RP2350 + our chip · sender</div>
+      <div class="chip" id="chip-b"><svg width="44" height="44" viewBox="0 0 44 44" aria-hidden="true">
+        <rect class="die" x="8" y="8" width="28" height="28" rx="4" fill="var(--series-1)"/>
+        <g stroke="var(--text-muted)" stroke-width="2">
+        <path d="M14 2v6M22 2v6M30 2v6M14 36v6M22 36v6M30 36v6M2 14h6M2 22h6M2 30h6M36 14h6M36 22h6M36 30h6"/></g></svg>
+        <div><div class="n" id="calls-b">0</div><div class="sub" id="op-b">chip calls · idle</div></div></div>
+      <div class="muted">shared key</div><div class="key" id="b-key">–</div>
+      <div class="muted" style="margin-top:10px">sent</div><div class="key" id="b-sent">–</div>
+      <p class="muted">One Tang Nano plays both chips; on the TT board each side has its own.</p>
+    </div>
+  </div>
+
+  <div class="panels">
+    <div class="card">
+      <h2>Performance: measured here → predicted on silicon</h2>
+      <div class="scroll-x"><table id="perf">
+        <thead><tr><th>op</th><th>chip calls</th><th id="th-run">FPGA run<br>(host + chip)</th><th>Python only</th>
+          <th>K<sub>py</sub></th><th>K<sub>chip</sub></th><th>RP2350 alone<br>(predicted)</th><th>RP2350 + chip<br>(predicted)</th><th>vs. alone</th></tr></thead>
+        <tbody><tr><td colspan="9" class="muted">run “Exchange keys”</td></tr></tbody></table></div>
+      <svg id="perfbars" width="100%" height="150" role="img" aria-label="Predicted time per operation"></svg>
+      <p class="muted" id="perf-note">RP2350 alone = Python-only × K<sub>py</sub>; RP2350 + chip = host part × K<sub>host</sub> + chip part × K<sub>chip</sub>.</p>
+      <details><summary>assumptions and sources</summary><div class="scroll-x"><table id="assump"></table></div></details>
+    </div>
+    <div class="card">
+      <h2>Events</h2>
+      <div class="log" id="log"></div>
+      <div id="timing"></div>
+    </div>
+  </div>
+</main>
+<div class="tip" id="tip"></div>
+
+<script>
+const $ = id => document.getElementById(id);
+const fmt = s => s == null ? "–" : s >= 1 ? s.toFixed(2) + " s" : s >= 1e-3 ? (s * 1e3).toFixed(2) + " ms" : (s * 1e6).toFixed(0) + " µs";
+const short = h => h ? h.slice(0, 16) + "…" : "–";
+let last = {}, busy = null;
+
+try { const t = localStorage.getItem("theme"); if (t) document.documentElement.dataset.theme = t; } catch (e) {}
+$("theme").onclick = () => {
+  const dark = getComputedStyle(document.documentElement).colorScheme.includes("dark");
+  document.documentElement.dataset.theme = dark ? "light" : "dark";
+  try { localStorage.setItem("theme", document.documentElement.dataset.theme); } catch (e) {}
+};
+
+async function act(name, body) {
+  await fetch("/api/" + name, { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify(body || {}) });
+  poll();
+}
+$("b-exchange").onclick = () => act("exchange");
+$("b-send").onclick = () => act("send", { msg: $("msg").value });
+for (const a of ["tamper_ct", "tamper_packet", "eavesdrop", "timing"]) $("b-" + a).onclick = () => act(a);
+$("mask").onchange = e => act("mask", { on: e.target.checked });
+
+function fly(id, from, to, bad) {
+  const e = $(id);
+  e.style.transition = "none"; e.style.left = from; e.style.display = "block";
+  e.classList.toggle("bad", !!bad);
+  requestAnimationFrame(() => requestAnimationFrame(() => { e.style.transition = ""; e.style.left = to; }));
+}
+
+const tip = $("tip");
+function hover(el, text) {
+  el.addEventListener("mousemove", ev => { tip.style.display = "block"; tip.textContent = text;
+    tip.style.left = ev.clientX + 12 + "px"; tip.style.top = ev.clientY + 12 + "px"; });
+  el.addEventListener("mouseleave", () => tip.style.display = "none");
+}
+const NS = "http://www.w3.org/2000/svg";
+function svgEl(tag, attrs) { const e = document.createElementNS(NS, tag); for (const k in attrs) e.setAttribute(k, attrs[k]); return e; }
+
+function drawHist(bins) {
+  const svg = $("hist"); svg.innerHTML = "";
+  const W = svg.clientWidth || 300, H = 92, n = bins.length, bw = W / n, max = Math.max(...bins, 1);
+  svg.appendChild(svgEl("line", { x1: 0, x2: W, y1: H, y2: H, stroke: "var(--grid)" }));
+  [[0, "start", "−1664"], [W / 2, "middle", "0"], [W, "end", "+1664"]].forEach(([x, a, t]) =>
+    svg.appendChild(svgEl("text", { x, y: H + 14, "text-anchor": a, fill: "var(--text-muted)", "font-size": 11 })).textContent = t);
+  bins.forEach((v, i) => {
+    const h = v / max * (H - 6);
+    const r = svgEl("rect", { x: i * bw + 1, y: H - h, width: Math.max(bw - 2, 1), height: Math.max(h, v ? 2 : 0), rx: 2,
+                               fill: i === 16 ? "var(--series-2)" : "var(--series-1)" });
+    const lo = Math.round(i * 3329 / 33 - 1664), hi = Math.round((i + 1) * 3329 / 33 - 1664);
+    const hit = svgEl("rect", { x: i * bw, y: 0, width: bw, height: H, fill: "transparent" });
+    hover(hit, `${lo} … ${hi}: ${v} values`);
+    svg.appendChild(r); svg.appendChild(hit);
+  });
+}
+
+function drawPerf(perf) {
+  const svg = $("perfbars"); svg.innerHTML = "";
+  const ops = ["keygen", "encaps", "decaps"].filter(o => perf[o]);
+  if (!ops.length) return;
+  const W = svg.clientWidth || 600, rowH = 40, lx = 70;
+  const max = Math.max(...ops.flatMap(o => [perf[o].pred.rp2350_alone_s, perf[o].pred.rp2350_plus_chip_s]));
+  const sx = v => (W - lx - 90) * v / max;
+  svg.setAttribute("height", ops.length * rowH + 30);
+  ops.forEach((o, i) => {
+    const p = perf[o].pred, y = 8 + i * rowH;
+    svg.appendChild(svgEl("text", { x: 0, y: y + 22, fill: "var(--text-secondary)", "font-size": 13 })).textContent = o;
+    const a = svgEl("rect", { x: lx, y, width: sx(p.rp2350_alone_s), height: 13, rx: 3, fill: "var(--series-2)" });
+    hover(a, `RP2350 alone: ${fmt(p.rp2350_alone_s)}`); svg.appendChild(a);
+    svg.appendChild(svgEl("text", { x: lx + sx(p.rp2350_alone_s) + 6, y: y + 11, fill: "var(--text-primary)", "font-size": 12 })).textContent = fmt(p.rp2350_alone_s);
+    const h = svgEl("rect", { x: lx, y: y + 16, width: sx(p.rp2350_host_s), height: 13, rx: 3, fill: "var(--series-1)" });
+    hover(h, `RP2350 host part: ${fmt(p.rp2350_host_s)}`); svg.appendChild(h);
+    const c = svgEl("rect", { x: lx + sx(p.rp2350_host_s) + 2, y: y + 16, width: Math.max(sx(p.chip_calls_s) - 2, 1), height: 13, rx: 3,
+                              fill: "var(--series-3)" });
+    hover(c, `chip calls on silicon: ${fmt(p.chip_calls_s)}`); svg.appendChild(c);
+    svg.appendChild(svgEl("text", { x: lx + sx(p.rp2350_plus_chip_s) + 6, y: y + 27, fill: "var(--text-primary)", "font-size": 12 })).textContent = fmt(p.rp2350_plus_chip_s);
+  });
+  const ly = ops.length * rowH + 22;
+  [["RP2350 alone", "--series-2"], ["RP2350 host part", "--series-1"], ["our chip calls", "--series-3"]].forEach(([t, c], i) => {
+    svg.appendChild(svgEl("rect", { x: lx + i * 160, y: ly - 9, width: 10, height: 10, rx: 2, fill: `var(${c})` }));
+    svg.appendChild(svgEl("text", { x: lx + i * 160 + 15, y: ly, fill: "var(--text-secondary)", "font-size": 12 })).textContent = t;
+  });
+}
+
+function render(s) {
+  $("source").textContent = "chip: " + s.source;
+  $("th-run").innerHTML = (s.source === "simulation" ? "chip-model run" : "FPGA run") + "<br>(host + chip)";
+  $("mask").checked = s.masked;
+  busy = s.busy;
+  document.querySelectorAll("button:not(#theme)").forEach(b => b.disabled = !!busy);
+  const pr = s.progress || {};
+  const side = /encaps/.test(busy || "") ? "b" : "a";
+  for (const k of ["a", "b"]) {
+    const on = busy && k === side;
+    $("chip-" + k).classList.toggle("busy", !!on);
+    if (on) { $("calls-" + k).textContent = pr.calls || 0;
+              $("op-" + k).textContent = `chip calls · ${pr.op || busy}: ${pr.last || "…"}`; }
+  }
+  const P = s.perf || {};
+  if (!busy) {
+    if (P.keygen) $("calls-a").textContent = Object.values(P.keygen.calls).reduce((a, b) => a + b, 0) + (P.decaps ? Object.values(P.decaps.calls).reduce((a, b) => a + b, 0) : 0);
+    if (P.encaps) $("calls-b").textContent = Object.values(P.encaps.calls).reduce((a, b) => a + b, 0);
+    $("op-a").textContent = "chip calls · idle"; $("op-b").textContent = "chip calls · idle";
+  }
+  const A = s.alice || {}, B = s.bob || {}, W = s.wire || {};
+  $("a-ek").textContent = A.ek ? `${A.ek_len} B · ${short(A.ek)}` : "–";
+  $("a-dk").textContent = A.dk_len ? `${A.dk_len} B · never leaves Alice` : "–";
+  const same = A.key && B.key && A.key === B.key;
+  $("a-key").innerHTML = A.key ? `${short(A.key)} <span class="${same ? "match" : "nomatch"}">${same ? "✓ matches Bob" : "✗ differs"}</span>` : "–";
+  $("b-key").textContent = short(B.key);
+  $("a-inbox").textContent = A.inbox == null ? (W.packet ? "✗ packet rejected" : "–") : "✓ " + A.inbox;
+  $("b-sent").textContent = W.packet ? $("msg").value : "–";
+  $("wire-hex").textContent = W.packet ? "packet: " + W.packet : W.ct ? "ciphertext: " + W.ct + "…" : W.ek ? "public key: " + W.ek + "…" : "";
+  if (W.ek && W.ek !== last.ek) fly("env-ek", "0%", "80%");
+  if (W.ct && W.ct !== last.ct) fly("env-ct", "80%", "0%");
+  if (W.packet && W.packet !== last.packet) fly("env-pk", "80%", "0%");
+  const logTxt = JSON.stringify(s.log.slice(-1));
+  if (logTxt !== last.logTxt && /tamper|flipped/.test(logTxt)) {
+    if (/packet/.test(logTxt)) fly("env-pk", "80%", "0%", true); else fly("env-ct", "80%", "0%", true);
+  }
+  last = { ek: W.ek, ct: W.ct, packet: W.packet, logTxt };
+
+  const E = s.eve || {};
+  if (E.bins) { $("eve-rec").textContent = E.recovered; $("eve-rec").style.color = E.recovered > 20 ? "var(--bad)" : "var(--good)"; drawHist(E.bins); }
+
+  const tb = $("perf").tBodies[0];
+  const ops = ["keygen", "encaps", "decaps"].filter(o => P[o]);
+  if (ops.length) {
+    tb.innerHTML = ops.map(o => { const p = P[o], n = Object.values(p.calls).reduce((a, b) => a + b, 0);
+      const sp = p.pred.speedup_vs_rp2350;
+      return `<tr><td>${o}${p.masked ? " (masked)" : ""}</td><td>${n}</td><td>${fmt(p.measured_s)}<br><span class="muted">${fmt(p.host_s)} + ${fmt(p.chip_s)}</span></td>
+        <td>${fmt(p.python_s)}</td><td>${p.coef.K_py.toFixed(2)}</td><td>${p.coef.K_chip.toExponential(2)}</td>
+        <td>${fmt(p.pred.rp2350_alone_s)}</td><td>${fmt(p.pred.rp2350_plus_chip_s)}</td><td>${sp.toFixed(2)}×</td></tr>`; }).join("");
+    drawPerf(P);
+    $("perf-note").innerHTML = `Chip clock ${P[ops[0]].f_chip_mhz.toFixed(1)} MHz. RP2350 alone = Python-only × K<sub>py</sub>; ` +
+      `RP2350 + chip = host part × K<sub>host</sub> + chip part × K<sub>chip</sub>. The real chip is ≈${(1 / P[ops[0]].coef.K_chip).toFixed(0)}× faster than ` +
+      (s.source === "simulation" ? "this Python chip model." : "the FPGA over USB.");
+  }
+  if (s.assumptions && !$("assump").rows.length)
+    $("assump").innerHTML = "<tr><th>parameter</th><th>value</th><th>status / source</th></tr>" +
+      s.assumptions.map(([k, v, st]) => `<tr><td>${k}</td><td>${v >= 1e5 ? (v / 1e6).toFixed(1) + " M" : +v.toPrecision(4)}</td><td style="text-align:left">${st}</td></tr>`).join("");
+
+  $("log").innerHTML = s.log.slice().reverse().map(l => `<div class="${l.kind}"><span class="muted">${l.t}</span> <span class="who">${l.who}</span>${l.msg}</div>`).join("");
+  $("timing").innerHTML = s.timing ? `<h2 style="margin-top:14px">Timing attack: 3 secrets</h2><table><tr><th>secret (first bytes)</th><th>chip calls</th><th>chip clocks</th></tr>` +
+    s.timing.map(r => `<tr><td>${r.key}…</td><td>${r.calls}</td><td>${r.clocks.toLocaleString()}</td></tr>`).join("") + "</table>" : "";
+}
+
+async function poll() {
+  try { const r = await fetch("/api/state"); render(await r.json()); } catch (e) { $("source").textContent = "server not reachable"; }
+}
+setInterval(poll, 300);
+poll();
+</script>
+</body>
+</html>

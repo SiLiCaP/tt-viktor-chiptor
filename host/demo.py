@@ -16,7 +16,7 @@ import time
 
 HERE = os.path.dirname(os.path.abspath(__file__))
 ROOT = os.path.dirname(HERE)
-sys.path[:0] = [HERE, os.path.join(ROOT, "sim"), os.path.join(ROOT, "model")]
+sys.path[:0] = [HERE, os.path.join(ROOT, "sim"), os.path.join(ROOT, "model"), os.path.join(ROOT, "tools")]
 
 from board import BoardBackend, SimEmu  # noqa: E402
 from host import make_host  # noqa: E402
@@ -59,23 +59,73 @@ def demo_polymul(be, rng):
     return f, g, s["out"], ref, match == 256
 
 
-def demo_mlkem(be, rng):
+def demo_mlkem(be, rng, label):
+    """ML-KEM-768 with the chip, the same operations in pure Python, then the coefficients and predictions."""
+    import perf_model as PM
     say("\n== 2. ML-KEM-768 key exchange, every NTT/basemul on the chip ==")
     kem, ref = MLKEM768(backend=be), MLKEM768()
     d, z, m = (rng.randbytes(32) for _ in range(3))
-    t0 = time.time()
-    ek, dk = kem.keygen_internal(d, z)
-    say(f"  Alice: keygen      -> public key {len(ek)} B   ({time.time() - t0:4.1f} s)")
-    t = time.time()
-    K_bob, c = kem.encaps_internal(ek, m)
-    say(f"  Bob  : encapsulate -> ciphertext {len(c)} B, key {K_bob.hex()[:16]}...  ({time.time() - t:4.1f} s)")
-    t = time.time()
-    K_alice = kem.decaps(dk, c)
-    say(f"  Alice: decapsulate -> key {K_alice.hex()[:16]}...  ({time.time() - t:4.1f} s)")
+    meas = {}
+
+    def run(op, fn, py_fn):
+        be.reset_counters()
+        t = time.perf_counter(); r = fn(); wall = time.perf_counter() - t
+        t = time.perf_counter(); py_fn(); py = time.perf_counter() - t
+        meas[op] = (wall, be.chip_s, dict(be.calls), py)
+        return r
+
+    ek, dk = run("keygen", lambda: kem.keygen_internal(d, z), lambda: ref.keygen_internal(d, z))
+    say(f"  Alice: keygen      -> public key {len(ek)} B")
+    K_bob, c = run("encaps", lambda: kem.encaps_internal(ek, m), lambda: ref.encaps_internal(ek, m))
+    say(f"  Bob  : encapsulate -> ciphertext {len(c)} B, key {K_bob.hex()[:16]}...")
+    K_alice = run("decaps", lambda: kem.decaps(dk, c), lambda: ref.decaps(dk, c))
+    say(f"  Alice: decapsulate -> key {K_alice.hex()[:16]}...")
     same = K_alice == K_bob
     std = (ek, dk) == ref.keygen_internal(d, z) and (K_bob, c) == ref.encaps_internal(ek, m)
     say(f"  shared keys equal: {OK if same else FAIL}    identical to pure-software FIPS 203: {OK if std else FAIL}")
-    return same and std
+
+    say("\n== 3. An encrypted packet with the shared key ==")
+    from packet import open_, seal
+    msg = b"Meet at the chip fab at 9. Bring the GDS."
+    blob = seal(K_bob, msg)
+    got = open_(K_alice, blob)
+    say(f"  Bob sends {len(blob)} B: {blob.hex()[:48]}...")
+    say(f"  Alice reads: \u201c{got.decode()}\u201d  -> {OK if got == msg else FAIL}")
+    bad = blob[:20] + bytes([blob[20] ^ 1]) + blob[21:]
+    try:
+        open_(K_alice, bad)
+        tamper_ok = False
+    except ValueError:
+        tamper_ok = True
+    say(f"  Eve flips one bit in transit -> Alice rejects it: {OK if tamper_ok else FAIL}")
+
+    say("\n== 4. Performance: measured here -> predicted on the TT board ==")
+    say(f"  {'op':7} {label:>26} {'Python only':>12} | {'K_py':>6} {'K_host':>7} {'K_chip':>9} | "
+        f"{'RP2350 alone':>12} {'RP2350+chip':>12} {'vs alone':>8}")
+    rows = {}
+    for op, (wall, chip_s, calls, py) in meas.items():
+        pr = PM.predict(op, py, wall - chip_s, chip_s, calls)
+        c, P = pr["coefficients"], pr["predicted"]
+        rows[op] = pr
+        say(f"  {op:7} {wall:10.3f} s (chip {chip_s:6.3f} s) {py * 1e3:9.2f} ms | {c['K_py']:6.2f} {c['K_host']:7.2f} "
+            f"{c['K_chip']:9.2e} | {P['rp2350_alone_s'] * 1e3:9.2f} ms {P['rp2350_plus_chip_s'] * 1e3:9.2f} ms "
+            f"{P['speedup_vs_rp2350']:7.2f}x")
+        try:
+            import perf
+            perf.append({"source": "demo", "kind": "measured", "backend": label, "op": op, "wall_s": wall,
+                         "chip_s": chip_s, "host_s": wall - chip_s, "chip_calls": calls})
+            perf.append({"source": "demo", "kind": "measured", "backend": "python-only (PC)", "op": op, "wall_s": py})
+            perf.append({"source": "demo", "kind": "predicted", "backend": "RP2350 + our chip (TT board)", "op": op,
+                         "corner": "nominal", "wall_s": P["rp2350_plus_chip_s"], "host_s": P["rp2350_host_s"],
+                         "chip_s": P["chip_calls_s"], "coefficients": c, "chip_calls": calls})
+            perf.append({"source": "demo", "kind": "predicted", "backend": "RP2350 alone (software)", "op": op,
+                         "wall_s": P["rp2350_alone_s"], "coefficients": {"K_py": c["K_py"]}})
+        except Exception as e:
+            say(f"  (perf log not written: {e})")
+    f, lim, _ = PM.f_chip()
+    say(f"  RP2350 alone = Python-only x K_py; RP2350 + chip = host part x K_host + chip part x K_chip")
+    say(f"  chip clock {f / 1e6:.0f} MHz (limited by {lim}); every input is listed in sim/config.py")
+    return same and std and got == msg and tamper_ok
 
 
 # ---------------------------------------------------------------- figures
@@ -234,7 +284,7 @@ def main():
     rng = random.Random(a.seed)
 
     f, g, chip, ref, ok1 = demo_polymul(be, rng)
-    ok2 = demo_mlkem(be, rng) if not a.no_mlkem else True
+    ok2 = demo_mlkem(be, rng, "chip model (PC)" if a.sim else "chip on FPGA (PC + Tang Nano)") if not a.no_mlkem else True
 
     # chip time as on the TT demo board (continuous streaming), from the cycle-accurate protocol model
     h = make_host("A")
