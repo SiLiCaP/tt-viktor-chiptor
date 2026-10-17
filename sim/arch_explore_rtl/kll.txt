@@ -1,0 +1,84 @@
+
+6. Printing statistics.
+
+=== keccak_lane_lat ===
+
+        +----------Local Count, excluding submodules.
+        |        +-Local Area, excluding submodules.
+        |        | 
+     5984        - wires
+     9107        - wire bits
+       64        - public wires
+     3177        - public wire bits
+        9        - ports
+      139        - port bits
+     8976 9.92E+04 cells
+        6    52.55   sky130_fd_sc_hd__a2111oi_0
+       41  359.094   sky130_fd_sc_hd__a211o_1
+       16  120.115   sky130_fd_sc_hd__a211oi_1
+        1    10.01   sky130_fd_sc_hd__a21bo_1
+       64  480.461   sky130_fd_sc_hd__a21boi_0
+       33  247.738   sky130_fd_sc_hd__a21o_1
+      506 2.53E+03   sky130_fd_sc_hd__a21oi_1
+       28  280.269   sky130_fd_sc_hd__a221o_1
+       97  849.565   sky130_fd_sc_hd__a221oi_1
+      373 3.73E+03   sky130_fd_sc_hd__a222oi_1
+       56   490.47   sky130_fd_sc_hd__a22o_1
+       66  495.475   sky130_fd_sc_hd__a22oi_1
+        4   35.034   sky130_fd_sc_hd__a2bb2oi_1
+        3   26.275   sky130_fd_sc_hd__a311oi_1
+       42  367.853   sky130_fd_sc_hd__a31o_1
+      190  1188.64   sky130_fd_sc_hd__a31oi_1
+        6   60.058   sky130_fd_sc_hd__a32o_1
+        2   17.517   sky130_fd_sc_hd__a32oi_1
+        1    8.758   sky130_fd_sc_hd__a41oi_1
+      209 1.31E+03   sky130_fd_sc_hd__and2_0
+       15    93.84   sky130_fd_sc_hd__and3_1
+        1    8.758   sky130_fd_sc_hd__and3b_1
+        3   26.275   sky130_fd_sc_hd__and4_1
+       88  330.317   sky130_fd_sc_hd__clkinv_1
+      219 4.38E+03   sky130_fd_sc_hd__dfxtp_1
+     1093 3.28E+04   sky130_fd_sc_hd__edfxtp_1
+        7   43.792   sky130_fd_sc_hd__lpflow_inputiso1p_1
+     1600  2.2E+04   sky130_fd_sc_hd__lpflow_inputisolatch_1
+      200   1251.2   sky130_fd_sc_hd__lpflow_isobufsrc_1
+        6   67.565   sky130_fd_sc_hd__mux2_1
+      201  2011.93   sky130_fd_sc_hd__mux2i_1
+      181  4076.41   sky130_fd_sc_hd__mux4_2
+      759 2.85E+03   sky130_fd_sc_hd__nand2_1
+       15    93.84   sky130_fd_sc_hd__nand2b_1
+       97  485.466   sky130_fd_sc_hd__nand3_1
+        2   15.014   sky130_fd_sc_hd__nand3b_1
+      139  869.584   sky130_fd_sc_hd__nand4_1
+      978 3.67E+03   sky130_fd_sc_hd__nor2_1
+        1    6.256   sky130_fd_sc_hd__nor2b_1
+       89  445.427   sky130_fd_sc_hd__nor3_1
+       54  405.389   sky130_fd_sc_hd__nor3b_1
+        6   37.536   sky130_fd_sc_hd__nor4_1
+        1    8.758   sky130_fd_sc_hd__nor4b_1
+        5   43.792   sky130_fd_sc_hd__o2111ai_1
+       50   375.36   sky130_fd_sc_hd__o211ai_1
+        7    52.55   sky130_fd_sc_hd__o21a_1
+      498  2492.39   sky130_fd_sc_hd__o21ai_0
+        2   20.019   sky130_fd_sc_hd__o21ba_1
+        7    52.55   sky130_fd_sc_hd__o21bai_1
+      100   875.84   sky130_fd_sc_hd__o221ai_1
+       14  122.618   sky130_fd_sc_hd__o22a_1
+      162 1.01E+03   sky130_fd_sc_hd__o22ai_1
+        1    8.758   sky130_fd_sc_hd__o2bb2ai_1
+        1    10.01   sky130_fd_sc_hd__o311a_1
+        3   26.275   sky130_fd_sc_hd__o311ai_0
+        1    8.758   sky130_fd_sc_hd__o31a_1
+       23  172.666   sky130_fd_sc_hd__o31ai_1
+        4   40.038   sky130_fd_sc_hd__o32a_1
+        7   61.309   sky130_fd_sc_hd__o32ai_1
+        1   11.261   sky130_fd_sc_hd__o41a_1
+        1    8.758   sky130_fd_sc_hd__o41ai_1
+       11   68.816   sky130_fd_sc_hd__or3_1
+        5   37.536   sky130_fd_sc_hd__or4_1
+      484 4.24E+03   sky130_fd_sc_hd__xnor2_1
+       90  788.256   sky130_fd_sc_hd__xor2_1
+
+   Chip area for module '\keccak_lane_lat': 99217.657600
+     of which used for sequential elements: 37205.683200 (37.50%)
+

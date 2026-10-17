@@ -55,10 +55,12 @@ AREA = {
     "keccak_round": (145288, "measured: Keccak-f[1600] 1 round/clock, synthesized"),
     "keccak_lane": (151452, "measured: sim/arch_explore_rtl/keccak_lane.v, verified, synthesized "
                             "(the 1,600 write-enabled state bits + 25:1 lane read mux dominate)"),
-    "keccak_lane_cg": (110000, "ESTIMATE: keccak_lane with clock-gated registers instead of enable flip-flops"),
+    "keccak_lane_lat": (99218, "measured: keccak_lane_lat.v, latch state storage, verified, synthesized"),
+    "keccak_lane_lat_cg": (88000, "ESTIMATE: keccak_lane_lat with clock-gated working registers"),
     "team_chip": (22903, "measured: chipathon-2026 tt_um_NTT_Core, synthesized"),
 }
-KECCAK_CLK = {"keccak_round": 24, "keccak_lane": 1346, "keccak_lane_cg": 1346}  # clocks/permutation (measured in RTL sim)
+KECCAK_CLK = {"keccak_round": 24, "keccak_lane": 1346, "keccak_lane_lat": 1346, "keccak_lane_lat_cg": 1346}
+#            clocks/permutation, measured in RTL simulation
 
 # NTT-engine time per call on the TT board, PIO+DMA (from sim/perf_model.py for A; others ESTIMATE)
 NTT_CALL_US = {
@@ -97,7 +99,8 @@ OPTIONS = [
     ("A + parallel multiplier (same area)", "ntt_A_par", None),
     ("NTT block engine B3 + parallel mult.", "ntt_B3_par", None),
     ("Keccak lane-serial (measured RTL)", None, "keccak_lane"),
-    ("Keccak lane-serial, clock-gated (est.)", None, "keccak_lane_cg"),
+    ("Keccak lane-serial, latch state (measured)", None, "keccak_lane_lat"),
+    ("  + clock-gated registers (est.)", None, "keccak_lane_lat_cg"),
     ("Keccak lane-serial + team NTT chip", "team_chip", "keccak_lane"),
     ("Keccak 1 round/clock (SW arithmetic)", None, "keccak_round"),
     ("Keccak 1 round/clock + NTT B3", "ntt_B3_par", "keccak_round"),

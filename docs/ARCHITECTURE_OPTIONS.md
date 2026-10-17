@@ -1,83 +1,100 @@
-# What can our chip do for ML-KEM-512 with 4, 6 or 8 tiles?
+# Options for 4 tiles and for 8 tiles (ML-KEM-512)
 
-This note is for deciding what to build and how many tiles to ask for. Our target is **ML-KEM-512**;
-`python sim/arch_explore.py ML-KEM-768` gives the same tables for 768. Every number comes from
-`python sim/arch_explore.py`. Each one is **measured** (RTL, synthesis, the FPGA), **cited** (pqm4,
-ePrint 2022/112) or an **estimate**. Times are for the Tiny Tapeout demo board: RP2350 at 150 MHz,
-chip at 50 MHz, with every bit moved over the pins.
+This note is for the tile negotiation: what each tile budget buys, measured where possible. Numbers come
+from `python sim/arch_explore.py` and from the RTL in `sim/arch_explore_rtl/`. Each one is **measured**
+(RTL, synthesis, FPGA), **cited** or an **estimate**. The setting is the TT demo board: RP2350 at 150 MHz,
+chip at 50 MHz, every bit moved over the pins.
 
-**Correction (Oct 17).** An earlier version of this note claimed a lane-serial Keccak (~50k µm²) would fit
-in 4×2 for 1.64×. Built, verified and synthesized, the core is **151k µm²**. No hashing engine fits in
-8 tiles. The detailed fit check is in `docs/spec-changes/02_hasher_engine.md`.
+The budget for synthesized logic is about **32k µm² for 4 tiles (2×2)** and **63k µm² for 8 tiles (4×2)**.
+That's an estimate: our 2×2 harden needed 1.6× the synthesized area once placed, at up to ~70 % density.
 
-## 1. Where ML-KEM-512 spends its time on the RP2350 alone
+## Where ML-KEM-512 spends its time on the RP2350 alone
 
-| Operation | Total | SHA-3 / SHAKE | NTT, basemul | Everything else |
+| | Total | SHA-3 / SHAKE | NTT, basemul | Rest |
 |---|---|---|---|---|
-| keygen | 2.62 ms | 1.98 ms (76 %) | 0.20 ms (8 %) | 0.44 ms (17 %) |
-| encaps | 2.61 ms | 1.92 ms (73 %) | 0.25 ms (10 %) | 0.44 ms (17 %) |
-| decaps | 2.85 ms | 1.92 ms (67 %) | 0.39 ms (14 %) | 0.55 ms (19 %) |
+| keygen | 2.62 ms | 76 % | 8 % | 17 % |
+| encaps | 2.61 ms | 73 % | 10 % | 17 % |
+| decaps | 2.85 ms | 67 % | 14 % | 19 % |
 
-The ceilings, by Amdahl's law:
-- an infinitely fast NTT unit gives at most **1.08–1.16×**;
-- an infinitely fast Keccak unit gives at most **3.0–4.1×**;
-- both together give at most **5.2–6.0×**.
+So an infinitely fast NTT unit gives at most 1.08–1.16×, and an infinitely fast hashing unit at most
+3.0–4.1× (Amdahl).
 
-Each operation runs 26–27 Keccak-f[1600] permutations, about 74 µs each on the RP2350.
+## 4 tiles (2×2), what we have
 
-## 2. Block areas
-
-| Block | Synthesized area (sky130) | Source |
-|---|---|---|
-| team chip `tt_um_NTT_Core` | 22,903 µm² | measured |
-| our NTT coprocessor | 20,042 µm² | measured |
-| full-rate K-RED multiplier (team, 3 rounds) | 8,785 µm² | measured |
-| Keccak-f[1600], lane-serial, 1,346 clocks / permutation | **151,452 µm²** | measured, RTL verified |
-| Keccak-f[1600], 1 round / clock, 24 clocks | 145,288 µm² | measured |
-| lane-serial with clock-gated registers | ~110,000 µm² | estimate |
-| one polynomial stored on chip | ~60,000–80,000 µm² | estimate |
-
-Budget for synthesized logic: about 32k µm² for 2×2, 48k for 3×2 and 63k for 4×2. That's an estimate:
-our 2×2 harden needed 1.6× the synthesized area once placed, at up to ~70 % density.
-
-The Keccak state is what makes it expensive: 1,600 bits that each need a write enable, plus a lane read
-mux. That's about 92k µm² of flip-flops before any logic. Doing it serially doesn't save area; the
-1-round-per-clock core is even slightly smaller.
-
-## 3. Options
-
-| Design | Area | Fits | One key exchange | vs. RP2350 alone |
+| Design | Area | NTT call | basemul call | Whole ML-KEM-512 |
 |---|---|---|---|---|
-| RP2350 alone | – | – | 8.08 ms | 1.00× |
-| today's NTT chip | 20–23k | 2×2 | 9.38 ms | 0.86× |
-| **+ full-rate multiplier schedule** (`spec-changes/01`) | same | 2×2 | 8.82 ms | **0.92×** |
-| NTT block engine (B3) | 36k (estimate) | 3×2 | 7.97 ms | 1.01× |
-| Keccak lane-serial (measured) | 151k | no (19 tiles) | 4.67 ms | 1.73× |
-| Keccak lane-serial + NTT chip | 174k | no (22 tiles) | 5.98 ms | 1.35× |
-| Keccak 1 round / clock | 145k | no (18 tiles) | 2.58 ms | 3.13× |
+| team chip on `main` (full-rate multiplier, started every 3rd clock) | 22.9k (measured) | 53.9 µs | 38.6 µs | 0.86× |
+| **+ full-rate schedule** (`spec-changes/01`) | same | 53.9 µs | **13.0 µs** | **0.92×** |
+| RP2350 software, for comparison | – | 39.9 µs | 10.8 µs | 1.00× |
 
-Chart: `reports/perf/05_architecture_options.png`.
+Nothing for hashing fits in 4 tiles at a useful speed (next section).
 
-## 4. What this means for the tile request
+## 8 tiles (4×2), what more tiles could buy
 
-1. **No hashing engine fits in 8 tiles**, and hashing is where the time is. A real speedup over the RP2350
-   needs at least ~14–19 tiles. Tiny Tapeout's largest project is 8×2 = 16 tiles.
-2. **"Keys and polynomials on chip" doesn't fit either.** One polynomial costs more than 8 tiles.
-3. Within 2×2–3×2 the chip sits near the RP2350's software speed: 0.92× with the full-rate schedule,
-   about 1.0× with a 16-coefficient block engine in 3×2. The pins (3 result bytes per butterfly) and
-   Amdahl's law (arithmetic is about 10 % of ML-KEM) cap it.
-4. So the case for the chip is **not raw speed with ≤ 8 tiles**. It's what it demonstrates:
-   - a verified ML-KEM arithmetic coprocessor;
-   - constant-time operation;
-   - side-channel exposure at the pins and the masking that fixes it (live demo);
-   - the measured path from RTL through FPGA to silicon.
-5. A single Tiny Tapeout chip runs one project at a time, so cooperating engines must be one project.
+| Design | Area | Effect | Whole ML-KEM-512 |
+|---|---|---|---|
+| team chip + full-rate schedule + **block engine (B3)**: 2–3 buffers of 16 coefficients, I/O overlapped with compute | ~45–50k (estimate) | NTT ~18–20 µs instead of 53.9 µs, **2× faster than RP2350 software** | ~1.0–1.05× |
+| hashing engine | – | no fast-enough Keccak fits (next section) | – |
+| polynomial cache (one full polynomial on chip) | +60–80k (estimate) | doesn't fit next to the NTT chip | – |
 
-## 5. Recommendation
+The honest pitch for 8 tiles is the block engine. It makes the chip's own NTT clearly faster than the
+RP2350 (≈ 2×), and it enables in-hardware shuffling (an LFSR permutes butterflies inside a block; already
+in the model as design B). ML-KEM as a whole barely moves, because hashing is about ¾ of the time.
 
-- **2×2:** adopt the full-rate schedule (`docs/spec-changes/01_full_rate_multiplier.md`). It costs no
-  area and makes basemul 3× and scale 2× faster.
-- **More tiles:** only worth it with a goal other than beating the RP2350. A 3×2 block engine reaches
-  about 1.0×; it doesn't fit in 2×2.
-- **Hashing on chip:** spec and verified core are ready (`docs/spec-changes/02_hasher_engine.md`,
-  `sim/arch_explore_rtl/keccak_lane.v`) for a future shuttle with ≥ 16 tiles or denser storage.
+## Hashing engines: is there a fast-enough one that fits?
+
+To beat the RP2350 (about 74 µs per Keccak-f[1600] permutation) at 50 MHz, a core needs fewer than ~3,700
+clocks per permutation. To reach about 1.7× overall, it needs about 1,300–1,500.
+
+| Keccak-f[1600] design | Area | Clocks / perm. | vs RP2350 per perm. | Fits 8 tiles? |
+|---|---|---|---|---|
+| Pessl & Hutter, CHES 2013 (smallest full-state, latch memory) | 5.5k GE (~21k µm², estimate) | ~15,000 | **4× slower** | yes |
+| Keccak team, compact (implementation overview) | 9.3k GE (~35k µm², estimate) | 5,160 | **1.4× slower** | yes |
+| Kavun & Yalçın, RFIDSec 2010 | 20.8k GE (~78k µm², estimate) | 1,200 | 3× faster | no |
+| **ours, lane-serial, flip-flop state** | **151k µm² (measured)** | **1,346 (measured)** | 2.7× faster | no (19 tiles) |
+| **ours, lane-serial, latch state** | **99k µm² (measured)** | **1,346 (measured)** | 2.7× faster | no (13 tiles) |
+| ours, latch state + clock-gated registers | ~88k µm² (estimate) | 1,346 | 2.7× faster | no (~11 tiles) |
+| 1 round per clock | 145k µm² (measured) | 24 | 100× faster | no (18 tiles) |
+
+GE → µm² uses a sky130 NAND2 (3.75 µm²). It's a rough conversion across libraries.
+
+**Result:**
+- Every Keccak core that fits in 8 tiles is slower than the RP2350's own software.
+- Every core faster than the RP2350 needs at least ~11 tiles.
+- Spending more clock cycles saves almost no area, because the area is the 1,600-bit state and its access
+  paths, not the round logic.
+- A hashing speedup needs Tiny Tapeout's 8×2 (16 tiles) or an SRAM macro for the state.
+
+## The 3× multiplier speedup: what happened to it
+
+- **`main` already has the full-rate multiplier** (Spec 2, Oct 17): 1 product per clock, latency 3. Its
+  pure calculation time for one NTT would be 896 products = **17.9 µs**.
+- **`main` doesn't run at that speed.** Each butterfly's result (2 coefficients = 3 bytes) has to leave on
+  the 8 output pins, which takes 3 clocks. Control therefore starts the multiplier only every 3rd clock,
+  and an NTT takes 2,688 clocks = **53.9 µs**. The multiplier idles two thirds of the time.
+- **Still up for grabs without area:** basemul and scale aren't pin-limited. Spec change 1 lets them use
+  the full rate: basemul 15 → 5 clocks per piece (3×), scale 6 → 3 per pair (2×).
+- **Reaching ~18 µs for the NTT** means not sending every layer's results over the pins. The block engine
+  keeps 16 coefficients on chip for 3–4 layers. With overlapped buffers its NTT takes about 900–950 clocks
+  (≈ 18–19 µs). That needs about +20–25k µm², so it doesn't fit in 4 tiles next to the current chip; it
+  fits in 8.
+
+Chip part of one ML-KEM-512 exchange (10 NTT, 7 inverse NTT, 18 basemul, 7 scale), silicon at 50 MHz,
+transfers included:
+
+| | Time |
+|---|---|
+| RP2350 software | 0.85 ms |
+| team chip on `main` | 1.72 ms |
+| + full-rate schedule (4 tiles) | 1.21 ms |
+| + block engine (8 tiles, estimate) | ~0.61 ms |
+
+## Sources
+
+- P. Pessl, M. Hutter, "Pushing the Limits of SHA-3 Hardware Implementations to Fit on RFID", CHES 2013,
+  https://eprint.iacr.org/2013/439
+- G. Bertoni, J. Daemen, M. Peeters, G. Van Assche, R. Van Keer, "Keccak implementation
+  overview" v3.2, https://keccak.team/files/Keccak-implementation-3.2.pdf
+- E. B. Kavun, T. Yalçın, "A Lightweight Implementation of Keccak Hash Function for Radio-Frequency
+  Identification Applications", RFIDSec 2010, https://link.springer.com/chapter/10.1007/978-3-642-16822-2_20
+- RP2350 software cost: pqm4 benchmarks (m4fspeed) and ePrint 2022/112, see `sim/config.py`.

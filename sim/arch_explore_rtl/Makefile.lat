@@ -1,0 +1,7 @@
+# cocotb test of the exploration Keccak core:  make -C sim/arch_explore_rtl
+SIM ?= icarus
+TOPLEVEL_LANG = verilog
+VERILOG_SOURCES = $(CURDIR)/keccak_lane_lat.v
+TOPLEVEL = keccak_lane_lat
+COCOTB_TEST_MODULES = test_keccak_lane_lat
+include $(shell cocotb-config --makefiles)/Makefile.sim

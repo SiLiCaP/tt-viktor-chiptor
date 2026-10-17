@@ -22,3 +22,4 @@ test/units/*.log
 tt
 sim/arch_explore_rtl/sim_build/
 sim/arch_explore_rtl/results.xml
+sim/arch_explore_rtl/sim_build_lat/

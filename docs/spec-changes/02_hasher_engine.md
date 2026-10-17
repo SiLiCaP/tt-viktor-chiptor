@@ -12,7 +12,8 @@ All areas are sky130 hd, Yosys + ABC, typical corner:
 | team chip `tt_um_NTT_Core` (I/O, control, ROM, multiplier, adders) | **22,903 µm²** | measured, chipathon-2026 `bb17782` |
 | Keccak-f[1600], lane-serial, 1,346 clocks / permutation | **151,452 µm²** | measured, RTL verified against hashlib (`tt-viktor-chiptor/sim/arch_explore_rtl/keccak_lane.v`) |
 | Keccak-f[1600], 1 round / clock, 24 clocks / permutation | 145,288 µm² | measured |
-| lane-serial with clock-gated registers instead of enable flip-flops | ~110,000 µm² | estimate |
+| lane-serial with **latch** state storage (same schedule, 1,346 clocks) | **99,218 µm²** | measured, verified (`keccak_lane_lat.v`) |
+| latch state + clock-gated working registers | ~88,000 µm² | estimate |
 | sponge control, byte I/O, command decode | ~5,000 µm² | estimate |
 
 What 4×2 holds: about 145,000 µm² of core area. Our 2×2 harden needed 1.6× its synthesized area once
@@ -25,9 +26,11 @@ logic for 4×2 (estimate).
 - NTT chip + Keccak + glue ≈ **179,000 µm²** synthesized, about 2.8× the 4×2 budget. It would need about
   **23 tiles**, and Tiny Tapeout's largest project is 8×2 = 16 tiles.
 - Even the best case (clock-gated registers, NTT chip dropped, ~110,000 µm²) needs about 14 tiles.
-- **Latch-based state storage** (one latch per bit plus a read mux, like the DFFRAM macros) might bring
-  the core to about 70–80k µm². That's about 10 tiles: still over 8, unverified, and latches complicate
-  timing signoff in the TT flow.
+- **Latch-based state storage** was built and verified: 99,218 µm² (the state drops from about 92k to 22k,
+  but the lane read mux and working registers remain). That's about 13 tiles, or about 11 with clock
+  gating. Still over 8, and latches complicate timing signoff in the TT flow.
+- Published compact cores that do fit (5.5–9.3k GE) take 5,000–15,000 clocks per permutation, which is
+  slower than the RP2350's software. See `docs/ARCHITECTURE_OPTIONS.md`.
 
 **Conclusion:** the hashing speedup can't be built in 8 tiles. If it fit, the measured core would give
 **1.73×** for ML-KEM-512 (better than the 1.64× estimated earlier, because the measured core is faster:
