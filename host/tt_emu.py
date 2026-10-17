@@ -85,6 +85,7 @@ class TTEmu:
         import serial
         self.port = port or find_port(baud)
         self.base_timeout = timeout
+        self.phase_s = {"tx": 0.0, "calc": 0.0, "rx": 0.0}
         self.ser = serial.Serial(self.port, baud, timeout=timeout)
         self.resync()
 
@@ -141,9 +142,16 @@ class TTEmu:
         out = []
         for i in range(0, len(words), DEPTH):
             chunk = words[i:i + DEPTH]
+            t0 = time.perf_counter()
             self.load(0, chunk)
+            t1 = time.perf_counter()
             self.run(len(chunk))
+            t2 = time.perf_counter()
             out += self.read_cap(0, len(chunk))
+            t3 = time.perf_counter()
+            self.phase_s["tx"] += t1 - t0          # USB: stimulus words into the FPGA
+            self.phase_s["calc"] += t2 - t1        # the chip clocking through them (13.5 MHz) + command round trip
+            self.phase_s["rx"] += t3 - t2          # USB: captured result bytes back to the PC
         return out
 
 

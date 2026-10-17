@@ -132,6 +132,30 @@ alone. Two things hold it back:
 Ways forward: more work per transferred word (on-chip storage, like the handoff's design B3), and
 SHA-3 on chip (option b).
 
+### TX / calc / RX breakdown
+
+```bash
+python3 tools/perf.py breakdown    # every chip call split into TX / calc / RX, vs the RP2350 alone
+```
+
+Figure: `reports/perf/04_tx_calc_rx_breakdown.png`. Silicon at 50 MHz, RP2350 at 150 MHz, each part on its own:
+
+| One call | RP2350 alone (SW) | chip calc | TX pins | RX pins | overlapped (real) | RP2350 CPU pack + unpack |
+|---|---|---|---|---|---|---|
+| NTT | 39.9 µs | 53.8 µs | 35.8 µs | 53.8 µs | 53.9 µs | 71.7 µs |
+| inverse NTT | 36.6 µs | 53.8 µs | 35.8 µs | 53.8 µs | 53.9 µs | 71.7 µs |
+| basemul | 10.8 µs | 38.4 µs | 10.2 µs | 7.7 µs | 38.6 µs | 11.9 µs |
+| scale | (inside iNTT) | 15.4 µs | 5.1 µs | 7.7 µs | 15.5 µs | 6.9 µs |
+
+- **calc** is the multiplier's busy time, as if the data were already on the chip. 4-bit serial at 50 MHz gives
+  1 product per 60 ns. A parallel 12×12 multiplier (what-if) would make an NTT 17.9 µs, but RX on the pins
+  would then still set the time at 53.8 µs.
+- The protocol overlaps TX, calc and RX, so a call takes as long as its slowest part. For NTT that's a tie
+  between calc and RX.
+- Feeding the chip (pack + unpack) costs the RP2350 more CPU time than doing the NTT itself.
+- On the FPGA, the same exchange measured: TX over USB 3.9 s, chip run 1.3 s (mostly USB round trips),
+  RX over USB 5.9 s, PC packing 0.08 s.
+
 ## More checks
 
 ```bash

@@ -96,6 +96,45 @@ def chip_calls_s(calls, corner="nominal", scenario=DEFAULT_SCENARIO):
     return sum(chip_call_breakdown(op, n, scenario, corner)["total_s"] for op, n in calls.items() if n)
 
 
+# what crosses the pins and what the chip computes, per call (exact, from the protocol and the RTL)
+WORDS_IN = {"ntt": 1792, "invntt": 1792, "basemul": 512, "scale": 256}      # 1 word per chip clock
+BYTES_OUT = {"ntt": 2688, "invntt": 2688, "basemul": 384, "scale": 384}     # 1 byte per chip clock
+MULT_PRODUCTS = {"ntt": 896, "invntt": 896, "basemul": 640, "scale": 256}   # modq_mul: 1 product / 3 clocks
+SW_KEY = {"ntt": "sw_ntt", "invntt": "sw_invntt", "basemul": "sw_basemul", "scale": None}
+
+
+def silicon_breakdown(op, corner="nominal"):
+    """One chip call on the TT board, split into its parts. Each part as if it ran alone:
+         tx_s    : input words over the 16 input pins (1 word / clock)
+         calc_s  : the chip's own arithmetic: multiplier busy time, as if the data were already inside
+         rx_s    : result bytes over the 8 output pins (1 byte / clock)
+       and what really happens:
+         wall_s  : the protocol overlaps all three; this is the measured-on-RTL clock count
+         pack_s / unpack_s : RP2350 CPU work to feed / drain the PIO FIFOs with DMA
+         rp_sw_s : the same operation done by the RP2350 alone in software (cited cycles; scale is inside iNTT)"""
+    f, _, _ = f_chip(corner)
+    rp = p("f_rp_hz")
+    kind = {"ntt": "bf", "invntt": "bf", "basemul": "piece", "scale": "scale"}[op]
+    sw = SW_KEY[op]
+    return {
+        "tx_s": WORDS_IN[op] / f,
+        "calc_s": MULT_PRODUCTS[op] * 3 / f,
+        "rx_s": BYTES_OUT[op] / f,
+        "wall_s": CLOCKS_PER_CALL[op] / f,
+        "pack_s": UNITS_PER_CALL[op] * p(f"pack_cyc_{kind}") / rp,
+        "unpack_s": UNITS_PER_CALL[op] * p(f"unpack_cyc_{kind}") / rp,
+        "rp_sw_s": p(sw) * p("m33_vs_m4") / rp if sw else None,
+        "calc_parallel_s": MULT_PRODUCTS[op] / f,      # what-if: a 12x12 parallel multiplier, 1 product / clock
+        "bound": _bound(op),
+    }
+
+
+def _bound(op):
+    parts = {"TX pins": WORDS_IN[op], "chip calc": MULT_PRODUCTS[op] * 3, "RX pins": BYTES_OUT[op]}
+    top = max(parts.values())
+    return " = ".join(k for k, v in parts.items() if v == top)
+
+
 def sw_offloaded_s(calls):
     """What the offloaded calls cost the RP2350 in software (cited, ePrint 2022/112; scale is inside its iNTT)."""
     cyc = calls.get("ntt", 0) * p("sw_ntt") + calls.get("invntt", 0) * p("sw_invntt") + calls.get("basemul", 0) * p("sw_basemul")
@@ -137,5 +176,6 @@ def assumptions():
     keys = ["f_rp_hz", "m33_vs_m4", "pio_cycles_per_chip_clock", "book_per_butterfly", "book_per_transaction",
             "book_overlap", "sw_ntt", "sw_invntt", "sw_basemul", "f_chip_target_hz", "f_chip_sta_typ_hz",
             "f_chip_sta_slow_hz", "f_io_limit_hz", "setup_cycles_per_call", "cpu_serial_cyc_bf", "pio_dma_cyc_bf",
-            "pio_dma_cyc_piece", "pio_dma_cyc_scale", "cores"]
+            "pio_dma_cyc_piece", "pio_dma_cyc_scale", "cores", "pack_cyc_bf", "unpack_cyc_bf", "pack_cyc_piece",
+            "unpack_cyc_piece", "pack_cyc_scale", "unpack_cyc_scale"]
     return [(k, PARAMS[k][0], PARAMS[k][1]) for k in keys]

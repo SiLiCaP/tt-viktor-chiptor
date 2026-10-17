@@ -46,6 +46,13 @@ PARAMS = {
     "pio_dma_cyc_piece":     (14, "ASSUMPTION: basemul piece, 4 words in + 1 result"),
     "pio_dma_cyc_scale":     (8,  "ASSUMPTION: scale pair, 2 words in + 1 result"),
     "cores":                 (2,  "cited: the RP2350 has two Cortex-M33 cores (the 2-core scenario splits pack and unpack)"),
+    # how the PIO+DMA CPU cycles above split into packing (TX side) and unpacking (RX side)
+    "pack_cyc_bf":      (6,  "ASSUMPTION: 2 coefficient loads, OR in valid/op bits, one 32-bit store to the TX buffer"),
+    "unpack_cyc_bf":    (6,  "ASSUMPTION: one 32-bit load of the autopushed 3 bytes, 2 bitfield extracts, 2 stores"),
+    "pack_cyc_piece":   (10, "ASSUMPTION: basemul piece, 4 coefficient loads + 2 stores"),
+    "unpack_cyc_piece": (4,  "ASSUMPTION: basemul piece, one result pair"),
+    "pack_cyc_scale":   (5,  "ASSUMPTION: scale pair, 2 coefficient loads + 2 stores"),
+    "unpack_cyc_scale": (3,  "ASSUMPTION: scale pair, one result pair"),
 
     # chip clock limits (prediction coefficient inputs)
     "f_chip_target_hz":     (50e6, "cited: src/config.json CLOCK_PERIOD = 20 ns (the TT flow's timing target)"),

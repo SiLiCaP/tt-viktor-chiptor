@@ -250,6 +250,124 @@ def chippart(args):
     print(f"\nwrote {out}")
 
 
+# ---------------------------------------------------------------- TX / calc / RX breakdown
+
+
+def _python_per_call(n=30):
+    """Pure-Python compute time of one call of each kind (median)."""
+    from mlkem import ReferenceBackend
+    be, rng = ReferenceBackend(), random.Random(5)
+    f = [rng.randrange(3329) for _ in range(256)]
+    g = [rng.randrange(3329) for _ in range(256)]
+    fns = {"ntt": lambda: be.ntt(f), "invntt": lambda: be.invntt(f), "basemul": lambda: be.basemul(f, g),
+           "scale": lambda: be.scale(f)}
+    out = {}
+    for op, fn in fns.items():
+        ts = []
+        for _ in range(n):
+            t = time.perf_counter(); fn(); ts.append(time.perf_counter() - t)
+        out[op] = statistics.median(ts)
+    return out
+
+
+def breakdown(args):
+    """Every chip call split into TX / calc / RX, measured on the FPGA and predicted on silicon, next to the
+    RP2350 doing the same job alone and the RP2350's own PIO+DMA pack/unpack work."""
+    from board import BoardBackend, SimEmu
+    import perf_model as PM
+    CALLS = ("ntt", "invntt", "basemul", "scale")
+
+    py = _python_per_call()
+    if args.sim:
+        emu, label = SimEmu(), "chip model (PC)"
+    else:
+        from tt_emu import TTEmu
+        emu, label = TTEmu(args.port, args.baud), "FPGA"
+    be = BoardBackend(emu)
+    meas = chip_run(be, args.seed)                    # full ML-KEM-768 exchange; phases accumulated per call kind
+    ncalls = {c: sum(meas[o]["calls"][c] for o in OPS) for c in CALLS}
+    fpga = {c: {k: v / ncalls[c] for k, v in be.phases.get(c, {"tx": 0, "calc": 0, "rx": 0, "wall": 0}).items()} for c in CALLS}
+    for c in CALLS:      # the rest of the call is the PC building stimulus words and unpacking results (Python)
+        fpga[c]["pack"] = fpga[c]["wall"] - fpga[c]["tx"] - fpga[c]["calc"] - fpga[c]["rx"]
+    si = {c: PM.silicon_breakdown(c) for c in CALLS}
+    f = PM.f_chip()[0]
+
+    us = lambda x: "    -   " if x is None else f"{x * 1e6:8.1f}"
+    ms = lambda x: f"{x * 1e3:8.1f}"
+    print(f"\nONE CHIP CALL (one 256-coefficient polynomial). Silicon at {f / 1e6:.0f} MHz, RP2350 at 150 MHz.")
+    print(f"{'':9}| {'RP2350 alone':>12} {'Python':>9} | {'silicon chip, each part on its own (µs)':^44} | "
+          f"{'RP2350 CPU w/ PIO+DMA':^21} | {label + ' measured (ms)':^37}")
+    print(f"{'call':9}| {'calc µs':>12} {'calc µs':>9} | {'TX pins':>8} {'calc':>8} {'RX pins':>8} {'overlapped':>10} "
+          f"{'bound':>20} | {'pack':>9} {'unpack':>9} | {'PC pack':>8} {'TX(USB)':>8} {'run':>8} {'RX(USB)':>8}")
+    for c in CALLS:
+        b = si[c]
+        print(f"{c:9}| {us(b['rp_sw_s']):>12} {py[c] * 1e6:9.1f} | {us(b['tx_s'])} {us(b['calc_s'])} {us(b['rx_s'])} "
+              f"{us(b['wall_s']):>10} {b['bound']:>20} | {us(b['pack_s']):>9} {us(b['unpack_s']):>9} | "
+              f"{ms(fpga[c]['pack'])} {ms(fpga[c]['tx'])} {ms(fpga[c]['calc'])} {ms(fpga[c]['rx'])}")
+    print("  what-if parallel 12x12 multiplier (1 product/clock): calc " +
+          ", ".join(f"{c} {si[c]['calc_parallel_s'] * 1e6:.1f} µs" for c in CALLS) + "; the pins then set the time")
+
+    print(f"\nONE ML-KEM-768 KEY EXCHANGE, only the chip's part ({', '.join(f'{ncalls[c]} {c}' for c in CALLS)})")
+    tot = lambda key: sum(ncalls[c] * (si[c][key] or 0) for c in CALLS)
+    rows = [("RP2350 alone, software calc (cited)", tot("rp_sw_s")),
+            ("Python on the PC, calc (measured)", sum(ncalls[c] * py[c] for c in CALLS)),
+            ("silicon: chip calc only (serial multiplier)", tot("calc_s")),
+            ("silicon: chip calc only (what-if parallel mult.)", tot("calc_parallel_s")),
+            ("silicon: TX over the pins", tot("tx_s")),
+            ("silicon: RX over the pins", tot("rx_s")),
+            ("silicon: TX + calc + RX overlapped (real)", tot("wall_s")),
+            ("RP2350 CPU: pack (PIO+DMA feeding)", tot("pack_s")),
+            ("RP2350 CPU: unpack (PIO+DMA draining)", tot("unpack_s")),
+            (f"{label} measured: PC pack/unpack (Python)", sum(ncalls[c] * fpga[c]["pack"] for c in CALLS)),
+            (f"{label} measured: TX over USB", sum(be.phases.get(c, {}).get("tx", 0) for c in CALLS)),
+            (f"{label} measured: chip run (incl. USB round trip)", sum(be.phases.get(c, {}).get("calc", 0) for c in CALLS)),
+            (f"{label} measured: RX over USB", sum(be.phases.get(c, {}).get("rx", 0) for c in CALLS))]
+    for name, v in rows:
+        print(f"  {name:52} {v * 1e3:10.3f} ms")
+        append({"source": "breakdown", "kind": "measured" if "measured" in name else "predicted",
+                "backend": f"chip part: {name}", "op": "kex", "wall_s": v})
+
+    # figure: one NTT call (µs) and the whole exchange's chip part (ms)
+    import matplotlib
+    matplotlib.use("Agg")
+    import matplotlib.pyplot as plt
+    plt.rcParams["font.family"] = "DejaVu Sans"
+    fig, axes = plt.subplots(1, 2, figsize=(17, 7), facecolor=SURFACE)
+    for ax, scale, unit, title, getter in (
+            (axes[0], 1e6, "µs", "One NTT call", lambda key: si["ntt"][key]),
+            (axes[1], 1e3, "ms", "ML-KEM-768 key exchange, chip's part", tot)):
+        items = [("RP2350 alone (software)", getter("rp_sw_s"), SERIES[1]),
+                 ("chip calc (serial mult.)", getter("calc_s"), SERIES[0]),
+                 ("chip calc (parallel mult., what-if)", getter("calc_parallel_s"), SERIES[0]),
+                 ("TX over pins", getter("tx_s"), SERIES[2]),
+                 ("RX over pins", getter("rx_s"), SERIES[2]),
+                 ("TX+calc+RX overlapped (real)", getter("wall_s"), SERIES[3]),
+                 ("RP2350 CPU pack + unpack (PIO+DMA)", getter("pack_s") + getter("unpack_s"), SERIES[1])]
+        names = [i[0] for i in items]
+        vals = [i[1] * scale for i in items]
+        bars = ax.barh(names, vals, height=0.55, color=[i[2] for i in items], edgecolor=SURFACE, linewidth=2)
+        for i, (b_, v) in enumerate(zip(bars, vals)):
+            if items[i][0].startswith("chip calc (parallel"):
+                b_.set_hatch("//"); b_.set_alpha(0.55)
+            ax.text(v + max(vals) * 0.01, b_.get_y() + b_.get_height() / 2, f"{v:.1f} {unit}" if unit == "µs" else f"{v:.2f} {unit}",
+                    va="center", fontsize=11, color=INK)
+        ax.invert_yaxis()
+        ax.set_xlim(0, max(vals) * 1.22)
+        ax.grid(axis="x", color=GRID, linewidth=0.8)
+        ax.set_xlabel(unit, color=INK2, fontsize=12)
+        _style(ax, title, f"silicon at {f / 1e6:.0f} MHz, RP2350 at 150 MHz; each bar on its own")
+    from matplotlib.patches import Patch
+    fig.legend(handles=[Patch(color=SERIES[1], label="RP2350 (software / its own transfer work)"),
+                        Patch(color=SERIES[0], label="our chip computing"), Patch(color=SERIES[2], label="moving the bits over the pins"),
+                        Patch(color=SERIES[3], label="what a call really takes (all three overlap)")],
+               loc="lower center", ncols=4, frameon=False, fontsize=11, labelcolor=INK2)
+    fig.tight_layout(rect=(0, 0.06, 1, 1))
+    out = os.path.join(ROOT, "reports", "perf", "04_tx_calc_rx_breakdown.png")
+    fig.savefig(out, dpi=110, facecolor=SURFACE)
+    plt.close(fig)
+    print(f"\nwrote {out}")
+
+
 # ---------------------------------------------------------------- backfill (numbers measured earlier today)
 
 BACKFILL = [
@@ -413,11 +531,16 @@ def main():
     c.add_argument("--baud", type=int, default=1000000)
     c.add_argument("--seed", type=int, default=2026)
     c.add_argument("--repeat", type=int, default=5)
+    k = sub.add_parser("breakdown", help="every chip call split into TX / calc / RX vs the RP2350 alone")
+    k.add_argument("--sim", action="store_true")
+    k.add_argument("--port")
+    k.add_argument("--baud", type=int, default=1000000)
+    k.add_argument("--seed", type=int, default=2026)
     sub.add_parser("plot")
     sub.add_parser("show")
     sub.add_parser("backfill")
     a = ap.parse_args()
-    {"bench": bench, "plot": plot, "show": show, "backfill": backfill, "chippart": chippart}[a.cmd](a)
+    {"bench": bench, "plot": plot, "show": show, "backfill": backfill, "chippart": chippart, "breakdown": breakdown}[a.cmd](a)
 
 
 if __name__ == "__main__":

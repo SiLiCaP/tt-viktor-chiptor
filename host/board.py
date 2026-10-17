@@ -29,6 +29,7 @@ class SimEmu:
 
     def __init__(self):
         self.chip = ChipA()
+        self.phase_s = {"tx": 0.0, "calc": 0.0, "rx": 0.0}   # no USB: everything is model time
 
     def ping(self):
         return b"SIM "
@@ -43,7 +44,10 @@ class SimEmu:
         self.chip = ChipA()
 
     def run_stream(self, words):
-        return [(self.chip.step(w & 0xFF, w >> 8), 0, 0) for w in words]
+        t = time.perf_counter()
+        out = [(self.chip.step(w & 0xFF, w >> 8), 0, 0) for w in words]
+        self.phase_s["calc"] += time.perf_counter() - t
+        return out
 
 
 class BoardBackend:
@@ -57,7 +61,8 @@ class BoardBackend:
         self.first_batch = None          # (op, stim, uo) of the first batch, for the timing figure
         self.log_first = log_first
         self._cur = None
-        self.reset_counters()
+        self.phases = {}                 # call name -> {"tx", "calc", "rx", "wall"} seconds, accumulated until
+        self.reset_counters()            # cleared on purpose (reset_counters keeps them)
 
     def reset_counters(self):
         self.calls = {"ntt": 0, "invntt": 0, "basemul": 0, "scale": 0}
@@ -105,9 +110,14 @@ class BoardBackend:
 
     def _timed(self, name, fn, *args):
         self._call(name)
+        before = dict(getattr(self.emu, "phase_s", {}))
         t = time.perf_counter()
         r = fn(*args)
         self.chip_s += time.perf_counter() - t
+        ph = self.phases.setdefault(name, {"tx": 0.0, "calc": 0.0, "rx": 0.0, "wall": 0.0})
+        for k, v in getattr(self.emu, "phase_s", {}).items():
+            ph[k] += v - before.get(k, 0.0)
+        ph["wall"] += time.perf_counter() - t
         return r
 
     def ntt(self, f):
