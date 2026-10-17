@@ -15,7 +15,7 @@ import tt_emu as P            # noqa: E402
 from dut_models import MODELS, run_model  # noqa: E402
 
 CPB = 8                       # clocks per UART bit (BAUD = 27 MHz / 8, set in the Makefile)
-TT_TOP = os.environ.get("TT_TOP", "tt_um_ntt_engine")
+TT_TOP = os.environ.get("TT_TOP", "tt_um_emu_selftest")
 
 
 class Link:

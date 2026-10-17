@@ -1,13 +1,13 @@
 # cocotb simulation of the Tang Nano wrapper + UART protocol.
-#   make                              DUT from info.yaml (passed in by fpga/Makefile)
-#   make TT_TOP=tt_um_emu_selftest    sequential self-test DUT (checks cycle accuracy)
+#   make                              sequential self-test DUT (checks the wrapper's cycle accuracy)
+#   make TT_TOP=tt_um_example DUT_SRCS=...   any DUT with a model in host/dut_models.py
 
 SIM ?= icarus
 TOPLEVEL_LANG ?= verilog
 FST ?= -fst
 
-TT_TOP   ?= tt_um_ntt_engine
-DUT_SRCS ?= $(abspath $(CURDIR)/../../src/project.v)
+TT_TOP   ?= tt_um_emu_selftest
+DUT_SRCS ?=
 export TT_TOP
 
 VERILOG_SOURCES = $(DUT_SRCS) $(CURDIR)/tt_um_emu_selftest.v $(CURDIR)/../uart.v $(CURDIR)/../tangnano20k_top.v

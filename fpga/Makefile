@@ -46,8 +46,8 @@ prog: $(BUILD)/top.fs
 flash: $(BUILD)/top.fs
 	openFPGALoader -b tangnano20k -f $<
 
-sim:
-	$(MAKE) -C $(FPGA_DIR)sim DUT_SRCS="$(DUT_SRCS)" TT_TOP=$(TT_TOP)
+sim:   # the wrapper is checked with the sequential self-test DUT (random pin words, cycle accuracy)
+	$(MAKE) -C $(FPGA_DIR)sim TT_TOP=tt_um_emu_selftest
 
 $(BUILD):
 	mkdir -p $@

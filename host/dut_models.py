@@ -37,6 +37,6 @@ def run_model(model, words):
     return [model.cycle(w & 0xFF, w >> 8) for w in words]
 
 
-MODELS = {"tt_um_ntt_engine": ExampleModel,   # still the template example logic
-          "tt_um_example": ExampleModel,
+MODELS = {"tt_um_example": ExampleModel,
           "tt_um_emu_selftest": SelftestModel}
+# tt_um_ntt_engine is checked by replaying protocol-legal stimulus files (host/test_ntt.py), not random words.
