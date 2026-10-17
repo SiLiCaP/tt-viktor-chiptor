@@ -100,7 +100,7 @@ details summary { cursor: pointer; color: var(--text-secondary); font-size: 13px
 </head>
 <body>
 <header>
-  <h1>ML-KEM-768 on our NTT chip</h1>
+  <h1 id="title">ML-KEM on our NTT chip</h1>
   <span class="badge" id="source">connecting…</span>
   <span class="spacer"></span>
   <label class="toggle" title="Split every chip operand into two random shares"><input type="checkbox" id="mask"> host-side masking</label>
@@ -271,6 +271,7 @@ function drawPerf(perf) {
 
 function render(s) {
   $("source").textContent = "chip: " + s.source;
+  $("title").textContent = (s.ps || "ML-KEM") + " on our NTT chip";
   $("th-run").innerHTML = (s.source === "simulation" ? "chip-model run" : "FPGA run") + "<br>(host + chip)";
   $("mask").checked = s.masked;
   busy = s.busy;

@@ -6,7 +6,7 @@ paused between batches (valid low changes nothing, docs/PROTOCOL.md).
 
     from board import BoardBackend
     be = BoardBackend(TTEmu())             # or BoardBackend(SimEmu()) without a board
-    MLKEM768(backend=be).keygen_internal(d, z)
+    MLKEM512(backend=be).keygen_internal(d, z)
 """
 import os
 import random

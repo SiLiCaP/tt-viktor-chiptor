@@ -20,7 +20,9 @@ sys.path[:0] = [HERE, os.path.join(ROOT, "sim"), os.path.join(ROOT, "model"), os
 
 from board import BoardBackend, SimEmu  # noqa: E402
 from host import make_host  # noqa: E402
-from mlkem import MLKEM768  # noqa: E402
+from mlkem import PARAMS  # noqa: E402
+
+PS = "ML-KEM-512"           # parameter set (our target); --ps ML-KEM-768 to change
 from mlkem_ntt_model import polymul_schoolbook  # noqa: E402
 from protocol import LAT, OP_BASEMUL, OP_CT, OP_GS, OP_SCALE  # noqa: E402
 
@@ -60,10 +62,10 @@ def demo_polymul(be, rng):
 
 
 def demo_mlkem(be, rng, label):
-    """ML-KEM-768 with the chip, the same operations in pure Python, then the coefficients and predictions."""
+    """ML-KEM with the chip, the same operations in pure Python, then the coefficients and predictions."""
     import perf_model as PM
-    say("\n== 2. ML-KEM-768 key exchange, every NTT/basemul on the chip ==")
-    kem, ref = MLKEM768(backend=be), MLKEM768()
+    say(f"\n== 2. {PS} key exchange, every NTT/basemul on the chip ==")
+    kem, ref = PARAMS[PS](backend=be), PARAMS[PS]()
     d, z, m = (rng.randbytes(32) for _ in range(3))
     meas = {}
 
@@ -104,7 +106,7 @@ def demo_mlkem(be, rng, label):
         f"{'RP2350 alone':>12} {'RP2350+chip':>12} {'vs alone':>8}")
     rows = {}
     for op, (wall, chip_s, calls, py) in meas.items():
-        pr = PM.predict(op, py, wall - chip_s, chip_s, calls)
+        pr = PM.predict(op, py, wall - chip_s, chip_s, calls, ps=PS)
         c, P = pr["coefficients"], pr["predicted"]
         rows[op] = pr
         say(f"  {op:7} {wall:10.3f} s (chip {chip_s:6.3f} s) {py * 1e3:9.2f} ms | {c['K_py']:6.2f} {c['K_host']:7.2f} "
@@ -241,7 +243,7 @@ def fig_mlkem(plt, per_op, path):
     ax.set_xlabel("chip clocks", color=INK2, fontsize=12)
     ax.legend(loc="lower right", bbox_to_anchor=(1, 1.0), frameon=False, fontsize=11, ncols=4, labelcolor=INK2)
     ax.xaxis.set_major_formatter(plt.FuncFormatter(lambda v, _: f"{v:,.0f}"))
-    style(ax, "ML-KEM-768: chip work per operation",
+    style(ax, f"{PS}: chip work per operation",
           "hashing, sampling and encoding stay on the host; the chip does every NTT, basemul and scale")
     fig.tight_layout()
     fig.savefig(path, dpi=110, facecolor=SURFACE)
@@ -271,8 +273,11 @@ def main():
     ap.add_argument("--baud", type=int, default=1000000)
     ap.add_argument("--seed", type=int, default=2026)
     ap.add_argument("--no-mlkem", action="store_true")
+    ap.add_argument("--ps", default="ML-KEM-512", choices=["ML-KEM-512", "ML-KEM-768"], help="parameter set")
     ap.add_argument("--out", default=os.path.join(ROOT, "reports", "demo"))
     a = ap.parse_args()
+    global PS
+    PS = a.ps
 
     if a.sim:
         emu = SimEmu()
@@ -292,8 +297,10 @@ def main():
     h.ntt(z); h.invntt(z); h.basemul(z, z); h.scale(z)
     per_call = dict(zip(["forward NTT", "inverse NTT", "basemul", "scale"], [s.clocks for s in h.stats]))
     names = {OP_CT: "forward NTT", OP_GS: "inverse NTT", OP_BASEMUL: "basemul", OP_SCALE: "scale"}
-    counts = {"keygen": {OP_CT: 6, OP_BASEMUL: 9}, "encaps": {OP_CT: 3, OP_BASEMUL: 12, OP_GS: 4, OP_SCALE: 4},
-              "decaps": {OP_CT: 6, OP_BASEMUL: 15, OP_GS: 5, OP_SCALE: 5}}
+    counts = ({"keygen": {OP_CT: 4, OP_BASEMUL: 4}, "encaps": {OP_CT: 2, OP_BASEMUL: 6, OP_GS: 3, OP_SCALE: 3},
+               "decaps": {OP_CT: 4, OP_BASEMUL: 8, OP_GS: 4, OP_SCALE: 4}} if PS == "ML-KEM-512" else
+              {"keygen": {OP_CT: 6, OP_BASEMUL: 9}, "encaps": {OP_CT: 3, OP_BASEMUL: 12, OP_GS: 4, OP_SCALE: 4},
+               "decaps": {OP_CT: 6, OP_BASEMUL: 15, OP_GS: 5, OP_SCALE: 5}})
     per_op = {o: {names[op]: n * per_call[names[op]] for op, n in c.items()} for o, c in counts.items()}
 
     os.makedirs(a.out, exist_ok=True)
@@ -306,7 +313,7 @@ def main():
         fig_pin_timing(plt, be.first_batch, os.path.join(a.out, "01_pin_timing.png"), source)
         fig_polymul(plt, chip, ref, os.path.join(a.out, "02_polymul.png"))
         fig_clocks(plt, per_call, os.path.join(a.out, "03_clocks_per_call.png"))
-        fig_mlkem(plt, per_op, os.path.join(a.out, "04_mlkem768_chip_work.png"))
+        fig_mlkem(plt, per_op, os.path.join(a.out, "04_mlkem_chip_work.png"))
     except ImportError:
         say("(matplotlib not installed: skipping figures)")
     write_vcd(be.first_batch, os.path.join(a.out, "pins_forward_ntt.vcd"))

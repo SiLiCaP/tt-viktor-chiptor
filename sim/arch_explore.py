@@ -1,16 +1,18 @@
-"""What could a 2x2 / 3x2 / 4x2 Tiny Tapeout chip do for ML-KEM-768?  Architecture exploration.
+"""What could a 2x2 / 3x2 / 4x2 Tiny Tapeout chip do for ML-KEM?  Architecture exploration.
 
-    python sim/arch_explore.py
+    python sim/arch_explore.py                  # ML-KEM-512 (our target)
+    python sim/arch_explore.py ML-KEM-768
 
 For each candidate design: synthesized (or estimated) cell area against the tile budget, and the
-predicted time per ML-KEM-768 operation on the TT demo board (RP2350 + chip), including moving every
+predicted time per ML-KEM operation on the TT demo board (RP2350 + chip), including moving every
 bit over the pins. Every number is tagged: measured / cited / ESTIMATE.
 
 Sources of the inputs:
   RP2350 software split (pqm4, cited): total cycles and hashing share per operation
   offloadable arithmetic (ePrint 2022/112 Table 2, cited): NTT 5,992, iNTT 5,491, basemul 1,613 cycles
-  Keccak work per operation (measured by instrumenting model/mlkem.py, FIPS 203):
-      ~43-44 Keccak-f[1600] permutations, ~1.7-1.8 kB absorbed, ~5.1-5.2 kB squeezed
+  Keccak work per operation (measured by instrumenting model/mlkem.py, FIPS 203, 40 random seeds):
+      ML-KEM-512 ~26-27 Keccak-f[1600] permutations, ~1.1-1.2 kB absorbed, ~2.7 kB squeezed
+      ML-KEM-768 ~43-44 permutations, ~1.7-1.8 kB absorbed, ~5.1-5.2 kB squeezed
       (decaps without the optional dk check, which pqm4 does not do either)
   areas: our RTL synthesized for sky130 (measured), Keccak-f 1 round/clock and a parallel K-RED multiplier
       synthesized for this exploration (measured, sim/arch_explore_rtl/), the smaller Keccak variants ESTIMATED
@@ -25,12 +27,19 @@ sys.path[:0] = [HERE, os.path.join(os.path.dirname(HERE), "model")]
 from config import PQM4  # noqa: E402
 
 F_RP, F_CHIP = 150e6, 50e6
-CALLS = {"keygen": {"ntt": 6, "invntt": 0, "basemul": 9, "scale": 0},
-         "encaps": {"ntt": 3, "invntt": 4, "basemul": 12, "scale": 4},
-         "decaps": {"ntt": 6, "invntt": 5, "basemul": 15, "scale": 5}}
+PS = sys.argv[1] if len(sys.argv) > 1 and sys.argv[1].startswith("ML-KEM") else "ML-KEM-512"
+CALLS_BY_PS = {      # chip calls per operation (test/py/test_mlkem.py checks these)
+    "ML-KEM-512": {"keygen": {"ntt": 4, "invntt": 0, "basemul": 4, "scale": 0},
+                   "encaps": {"ntt": 2, "invntt": 3, "basemul": 6, "scale": 3},
+                   "decaps": {"ntt": 4, "invntt": 4, "basemul": 8, "scale": 4}},
+    "ML-KEM-768": {"keygen": {"ntt": 6, "invntt": 0, "basemul": 9, "scale": 0},
+                   "encaps": {"ntt": 3, "invntt": 4, "basemul": 12, "scale": 4},
+                   "decaps": {"ntt": 6, "invntt": 5, "basemul": 15, "scale": 5}}}
+CALLS = CALLS_BY_PS[PS]
 SW_CYC = {"ntt": 5992, "invntt": 5491, "basemul": 1613, "scale": 0}            # cited; scale is inside iNTT
 # Keccak work per op, measured with the instrumented model (decaps: without the optional dk check)
-KECCAK = {"keygen": (43.1, 1721, 5112, 18), "encaps": (44.1, 1785, 5240, 19), "decaps": (44.1, 1729, 5272, 19)}
+KECCAK = {"ML-KEM-512": {"keygen": (27.0, 1101, 2749, 10), "encaps": (26.0, 1165, 2749, 11), "decaps": (26.0, 1165, 2749, 11)},
+          "ML-KEM-768": {"keygen": (43.1, 1721, 5112, 17), "encaps": (44.1, 1785, 5240, 18), "decaps": (44.1, 1721, 5240, 18)}}[PS]
 #            (permutations, bytes absorbed, bytes squeezed, hash calls)
 
 # tile budget for synthesized area: core area x 70 % density / 1.6 (placed/synth, measured on our 2x2)
@@ -58,7 +67,7 @@ HASH_SETUP_CYC = 300                                                            
 
 
 def rp_split(op):
-    cyc, share = PQM4[("ML-KEM-768", op)]
+    cyc, share = PQM4[(PS, op)]
     total = cyc / F_RP
     hashing = cyc * share / F_RP
     arith = sum(n * SW_CYC[k] for k, n in CALLS[op].items()) / F_RP
@@ -103,7 +112,7 @@ def fits(a):
 
 
 def main():
-    print("RP2350 alone, ML-KEM-768 (pqm4 m4fspeed cycles at 150 MHz):")
+    print(f"RP2350 alone, {PS} (pqm4 m4fspeed cycles at 150 MHz):")
     for op in CALLS:
         t, h, a, r = rp_split(op)
         print(f"  {op:7} {t * 1e3:5.2f} ms = hashing {h * 1e3:4.2f} ({h / t:4.0%}) + NTT/basemul {a * 1e3:4.2f} ({a / t:3.0%}) "
@@ -157,9 +166,9 @@ def plot(rows, path):
     for s_ in ("top", "right"):
         ax.spines[s_].set_visible(False)
     ax.tick_params(colors=INK2, labelsize=11)
-    ax.set_xlabel("ms for one ML-KEM-768 key exchange (keygen + encaps + decaps) on the TT board, transfers included",
+    ax.set_xlabel(f"ms for one {PS} key exchange (keygen + encaps + decaps) on the TT board, transfers included",
                   color=INK2, fontsize=12)
-    ax.set_title("What could our chip do? Time per key exchange by design", loc="left", fontsize=17, color=INK,
+    ax.set_title(f"What could our chip do? {PS}: time per key exchange by design", loc="left", fontsize=17, color=INK,
                  fontweight="bold", pad=30)
     ax.text(0, 1.02, "[fits in] = smallest tile combo whose cell budget it fits (estimate); hashing is ~3/4 of ML-KEM",
             transform=ax.transAxes, fontsize=12, color=INK2)
@@ -170,6 +179,7 @@ def plot(rows, path):
 
 
 if __name__ == "__main__":
-    out = os.path.join(os.path.dirname(HERE), "reports", "perf", "05_architecture_options.png")
+    out = os.path.join(os.path.dirname(HERE), "reports", "perf",
+                       "05_architecture_options.png" if PS == "ML-KEM-512" else f"05_architecture_options_{PS[-3:]}.png")
     plot(main(), out)
     print(f"\nwrote {out}")

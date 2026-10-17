@@ -22,6 +22,7 @@ import time
 ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 sys.path[:0] = [os.path.join(ROOT, d) for d in ("host", "sim", "model")]
 LOG = os.path.join(ROOT, "perf", "perf_log.jsonl")
+PS = "ML-KEM-512"          # parameter set; our target. --ps ML-KEM-768 on any command to change it
 OPS = ("keygen", "encaps", "decaps")
 
 # ---------------------------------------------------------------- log
@@ -38,7 +39,7 @@ def git_rev():
 
 
 def append(rec):
-    rec = {"ts": datetime.datetime.now().astimezone().isoformat(timespec="seconds"), "git": git_rev(), **rec}
+    rec = {"ts": datetime.datetime.now().astimezone().isoformat(timespec="seconds"), "git": git_rev(), "ps": PS, **rec}
     os.makedirs(os.path.dirname(LOG), exist_ok=True)
     with open(LOG, "a") as fh:
         fh.write(json.dumps(rec) + "\n")
@@ -55,7 +56,7 @@ def read_log():
 
 
 def run_kex(kem, rng_seed):
-    """keygen, encaps, decaps of ML-KEM-768 -> {op: seconds}, shared key."""
+    """keygen, encaps, decaps -> {op: seconds}, shared key."""
     rng = random.Random(rng_seed)
     d, z, m = (rng.randbytes(32) for _ in range(3))
     t = {}
@@ -68,8 +69,8 @@ def run_kex(kem, rng_seed):
 
 def chip_run(be, seed):
     """Per-op measured wall, chip and host time with a BoardBackend, plus its chip calls."""
-    from mlkem import MLKEM768
-    kem = MLKEM768(backend=be)
+    from mlkem import PARAMS
+    kem = PARAMS[PS](backend=be)
     rng = random.Random(seed)
     d, z, m = (rng.randbytes(32) for _ in range(3))
     out = {}
@@ -89,13 +90,13 @@ def chip_run(be, seed):
 
 def bench(args):
     from board import BoardBackend, SimEmu
-    from mlkem import MLKEM768
+    from mlkem import PARAMS
     import perf_model as PM
 
     seed = args.seed
     py = {op: [] for op in OPS}
     for _ in range(args.repeat):
-        t, _ = run_kex(MLKEM768(), seed)
+        t, _ = run_kex(PARAMS[PS](), seed)
         for op in OPS:
             py[op].append(t[op])
     py = {op: statistics.median(v) for op, v in py.items()}
@@ -117,7 +118,7 @@ def bench(args):
                 "chip_s": m["chip_s"], "host_s": m["host_s"], "chip_calls": m["calls"], "uart_baud": baud,
                 "note": "real coprocessor loop, one NTT layer per USB batch"})
         for corner in ("nominal", "slow"):
-            pr = PM.predict(op, py[op], m["host_s"], m["chip_s"], m["calls"], corner)
+            pr = PM.predict(op, py[op], m["host_s"], m["chip_s"], m["calls"], corner, ps=PS)
             rec = append({"source": "bench", "kind": "predicted", "op": op, "corner": corner,
                           "backend": "RP2350 + our chip (TT board)", "wall_s": pr["predicted"]["rp2350_plus_chip_s"],
                           "host_s": pr["predicted"]["rp2350_host_s"], "chip_s": pr["predicted"]["chip_calls_s"],
@@ -151,7 +152,7 @@ def _fmt_us(s):
 def chippart(args):
     """Only NTT/INTT/basemul/scale: pure Python vs the chip on FPGA vs predicted RP2350 / silicon."""
     from board import BoardBackend, SimEmu
-    from mlkem import MLKEM768, ReferenceBackend, TimingBackend
+    from mlkem import PARAMS, ReferenceBackend, TimingBackend
     import perf_model as PM
 
     rng = random.Random(args.seed)
@@ -160,7 +161,7 @@ def chippart(args):
     calls = {}
     for _ in range(args.repeat):
         tb = TimingBackend(ReferenceBackend())
-        kem = MLKEM768(backend=tb)
+        kem = PARAMS[PS](backend=tb)
         for op in OPS:
             tb.seconds = 0.0
             tb.counts = dict.fromkeys(tb.counts, 0)
@@ -190,7 +191,7 @@ def chippart(args):
     cols = [("python_pc_s", "Python (PC)"), ("fpga_usb_s", label or "-"), ("rp2350_sw_s", "RP2350 software"),
             ("silicon_pins_only_s", "silicon: pins only"), ("rp2350_chip_cpu_serial_s", "RP2350+chip CPU-serial"),
             ("rp2350_chip_pio_dma_s", "RP2350+chip PIO+DMA"), ("rp2350_chip_pio_dma_2core_s", "RP2350+chip PIO+DMA 2 cores")]
-    print("\nONLY THE CHIP'S PART (NTT, INTT, basemul, scale) of ML-KEM-768, every time includes moving the data over the pins")
+    print(f"\nONLY THE CHIP'S PART (NTT, INTT, basemul, scale) of {PS}, every time includes moving the data over the pins")
     print(f"{'':14}" + "".join(f"{h[:22]:>24}" for _, h in cols))
     for op, r in rows.items():
         print(f"{op:14}" + "".join(f"{_fmt_us(r[k]) if r[k] is not None else '-':>24}" for k, _ in cols))
@@ -232,7 +233,7 @@ def chippart(args):
     ax.invert_yaxis()
     ax.set_xlim(0, max(vals) * 1.18)
     ax.grid(axis="x", color=GRID, linewidth=0.8)
-    ax.set_xlabel("ms for the NTT/INTT/basemul/scale part of one ML-KEM-768 key exchange (keygen + encaps + decaps)",
+    ax.set_xlabel(f"ms for the NTT/INTT/basemul/scale part of one {PS} key exchange (keygen + encaps + decaps)",
                   color=INK2, fontsize=12)
     from matplotlib.patches import Patch
     ax.legend(handles=[Patch(color=SERIES[2], label="measured: pure Python on the PC"),
@@ -284,7 +285,7 @@ def breakdown(args):
         from tt_emu import TTEmu
         emu, label = TTEmu(args.port, args.baud), "FPGA"
     be = BoardBackend(emu)
-    meas = chip_run(be, args.seed)                    # full ML-KEM-768 exchange; phases accumulated per call kind
+    meas = chip_run(be, args.seed)                    # full key exchange; phases accumulated per call kind
     ncalls = {c: sum(meas[o]["calls"][c] for o in OPS) for c in CALLS}
     fpga = {c: {k: v / ncalls[c] for k, v in be.phases.get(c, {"tx": 0, "calc": 0, "rx": 0, "wall": 0}).items()} for c in CALLS}
     for c in CALLS:      # the rest of the call is the PC building stimulus words and unpacking results (Python)
@@ -307,7 +308,7 @@ def breakdown(args):
     print("  what-if parallel 12x12 multiplier (1 product/clock): calc " +
           ", ".join(f"{c} {si[c]['calc_parallel_s'] * 1e6:.1f} µs" for c in CALLS) + "; the pins then set the time")
 
-    print(f"\nONE ML-KEM-768 KEY EXCHANGE, only the chip's part ({', '.join(f'{ncalls[c]} {c}' for c in CALLS)})")
+    print(f"\nONE {PS} KEY EXCHANGE, only the chip's part ({', '.join(f'{ncalls[c]} {c}' for c in CALLS)})")
     tot = lambda key: sum(ncalls[c] * (si[c][key] or 0) for c in CALLS)
     rows = [("RP2350 alone, software calc (cited)", tot("rp_sw_s")),
             ("Python on the PC, calc (measured)", sum(ncalls[c] * py[c] for c in CALLS)),
@@ -335,7 +336,7 @@ def breakdown(args):
     fig, axes = plt.subplots(1, 2, figsize=(17, 7), facecolor=SURFACE)
     for ax, scale, unit, title, getter in (
             (axes[0], 1e6, "µs", "One NTT call", lambda key: si["ntt"][key]),
-            (axes[1], 1e3, "ms", "ML-KEM-768 key exchange, chip's part", tot)):
+            (axes[1], 1e3, "ms", f"{PS} key exchange, chip's part", tot)):
         items = [("RP2350 alone (software)", getter("rp_sw_s"), SERIES[1]),
                  ("chip calc (serial mult.)", getter("calc_s"), SERIES[0]),
                  ("chip calc (parallel mult., what-if)", getter("calc_parallel_s"), SERIES[0]),
@@ -370,28 +371,32 @@ def breakdown(args):
 
 # ---------------------------------------------------------------- backfill (numbers measured earlier today)
 
-BACKFILL = [
+BACKFILL = [      # (ts, git, backend, seconds, note, ps)
+    ("2026-10-17T16:00:00+03:00", "ceb87c7", "RTL simulation (cocotb/Icarus)", 3.94,
+     "ML-KEM-512 keygen+encaps+decaps trace, cycle-exact (test_mlkem512_through_rtl)", "ML-KEM-512"),
+    ("2026-10-17T16:15:00+03:00", "0498779", "gate-level simulation (sky130 netlist)", 73.97,
+     "same ML-KEM-512 trace on the hardened netlist (GATES=yes)", "ML-KEM-512"),
     ("2026-10-17T16:00:00+03:00", "ceb87c7", "RTL simulation (cocotb/Icarus)", 7.46,
-     "ML-KEM-768 keygen+encaps+decaps trace, 141,039 clocks, cycle-exact (test_mlkem768_through_rtl)"),
+     "ML-KEM-768 keygen+encaps+decaps trace, 141,039 clocks, cycle-exact (test_mlkem768_through_rtl)", "ML-KEM-768"),
     ("2026-10-17T16:01:00+03:00", "0498779", "chip on FPGA, trace replay @115.2 kbaud", 61.5,
-     "host/test_ntt.py --mlkem ML-KEM-768, 141,039 clocks, all bytes match"),
+     "host/test_ntt.py --mlkem ML-KEM-768, 141,039 clocks, all bytes match", "ML-KEM-768"),
     ("2026-10-17T16:15:00+03:00", "0498779", "gate-level simulation (sky130 netlist)", 120.49,
-     "same trace on the hardened netlist (GATES=yes)"),
+     "same ML-KEM-768 trace on the hardened netlist (GATES=yes)", "ML-KEM-768"),
     ("2026-10-17T16:19:00+03:00", "75070d0", "chip on FPGA, trace replay @1 Mbaud", 8.1,
-     "same trace after raising the UART to 1 Mbaud"),
+     "same trace after raising the UART to 1 Mbaud", "ML-KEM-768"),
     ("2026-10-17T16:23:00+03:00", "75070d0", "chip on FPGA (PC + Tang Nano)", 11.2,
-     "first live coprocessor loop (host/demo.py): keygen 2.7 s + encaps 3.5 s + decaps 5.0 s"),
+     "first live coprocessor loop (host/demo.py): keygen 2.7 s + encaps 3.5 s + decaps 5.0 s", "ML-KEM-768"),
 ]
 
 
 def backfill(_args):
-    have = {(r.get("ts"), r.get("backend")) for r in read_log()}
+    have = {(r.get("ts"), r.get("backend"), r.get("ps", "ML-KEM-768")) for r in read_log()}
     os.makedirs(os.path.dirname(LOG), exist_ok=True)
     with open(LOG, "a") as fh:
-        for ts, rev, backend, s, note in BACKFILL:
-            if (ts, backend) in have:
+        for ts, rev, backend, s, note, ps in BACKFILL:
+            if (ts, backend, ps) in have:
                 continue
-            fh.write(json.dumps({"ts": ts, "git": rev, "source": "backfill (session log, time approximate)",
+            fh.write(json.dumps({"ts": ts, "git": rev, "ps": ps, "source": "backfill (session log, time approximate)",
                                  "kind": "measured", "backend": backend, "op": "kex", "wall_s": s,
                                  "note": note}) + "\n")
     print(f"backfilled {len(BACKFILL)} early data points into {LOG}")
@@ -436,7 +441,9 @@ def plot(_args):
     os.makedirs(out, exist_ok=True)
     log = read_log()
 
-    # 1. journey: one ML-KEM-768 key exchange (keygen+encaps+decaps), each way we have run it
+    # 1. journey: one key exchange (keygen+encaps+decaps) of PS, each way we have run it.
+    #    Records from before the ps tag existed were all ML-KEM-768.
+    log = [r for r in log if r.get("ps", "ML-KEM-768") == PS and not r["backend"].startswith("chip part:")]
     kex = {}
     for r in log:
         if r.get("corner") == "slow":
@@ -462,11 +469,11 @@ def plot(_args):
     ax.set_xlim(min(vals) / 3, max(vals) * 12)
     ax.invert_yaxis()
     ax.grid(axis="x", color=GRID, linewidth=0.8)
-    ax.set_xlabel("seconds for one ML-KEM-768 key exchange (keygen + encaps + decaps), log scale", color=INK2, fontsize=12)
+    ax.set_xlabel(f"seconds for one {PS} key exchange (keygen + encaps + decaps), log scale", color=INK2, fontsize=12)
     from matplotlib.patches import Patch
     ax.legend(handles=[Patch(color=SERIES[0], label="measured"), Patch(color=SERIES[1], label="predicted (sim/perf_model.py)")],
               loc="lower right", bbox_to_anchor=(1, 1.0), ncols=2, frameon=False, fontsize=11, labelcolor=INK2)
-    _style(ax, "From simulation to silicon: one ML-KEM-768 key exchange",
+    _style(ax, f"From simulation to silicon: one {PS} key exchange",
            "oldest run at the top; latest value per setup; bars are wall-clock time")
     fig.tight_layout()
     fig.savefig(os.path.join(out, "01_journey.png"), dpi=110, facecolor=SURFACE)
@@ -539,7 +546,10 @@ def main():
     sub.add_parser("plot")
     sub.add_parser("show")
     sub.add_parser("backfill")
+    ap.add_argument("--ps", default="ML-KEM-512", choices=["ML-KEM-512", "ML-KEM-768"], help="parameter set")
     a = ap.parse_args()
+    global PS
+    PS = a.ps
     {"bench": bench, "plot": plot, "show": show, "backfill": backfill, "chippart": chippart, "breakdown": breakdown}[a.cmd](a)
 
 

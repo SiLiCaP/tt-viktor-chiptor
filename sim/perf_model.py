@@ -27,7 +27,6 @@ sys.path[:0] = [HERE, os.path.join(os.path.dirname(HERE), "model")]
 
 from config import PARAMS, PQM4, p  # noqa: E402
 
-OPS_768 = {"keygen": ("ML-KEM-768", "keygen"), "encaps": ("ML-KEM-768", "encaps"), "decaps": ("ML-KEM-768", "decaps")}
 
 # protocol clocks per call (continuous streaming, verified cycle-exact on RTL and FPGA): forward/inverse
 # 895*3 + D + 3, basemul 127*15 + 20 + 3, scale 127*6 + 9 + 3
@@ -152,9 +151,11 @@ def chip_part(calls, py_chip_s=None, fpga_chip_s=None, corner="nominal"):
     return out
 
 
-def predict(op, py_only_s, fpga_host_s, fpga_chip_s, calls, corner="nominal", scenario=DEFAULT_SCENARIO):
-    """All numbers for one ML-KEM-768 operation. calls: {'ntt': n, 'invntt': n, 'basemul': n, 'scale': n}."""
-    ps, o = OPS_768[op]
+def predict(op, py_only_s, fpga_host_s, fpga_chip_s, calls, corner="nominal", scenario=DEFAULT_SCENARIO,
+            ps="ML-KEM-512"):
+    """All numbers for one ML-KEM operation (default ML-KEM-512, our target).
+    calls: {'ntt': n, 'invntt': n, 'basemul': n, 'scale': n}."""
+    o = op
     t_sw = rp2350_sw_s(ps, o)
     t_host = rp2350_host_s(ps, o, calls)
     t_chip = chip_calls_s(calls, corner, scenario)

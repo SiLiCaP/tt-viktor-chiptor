@@ -1,4 +1,4 @@
-"""Interactive live demo: ML-KEM-768 key exchange and encrypted packets through our NTT chip, with Eve.
+"""Interactive live demo: ML-KEM (default ML-KEM-512) key exchange and encrypted packets through our NTT chip, with Eve.
 
     python host/live_demo.py            # chip on the Tang Nano (auto-detected)
     python host/live_demo.py --sim      # Python chip model, no board needed
@@ -29,7 +29,13 @@ sys.path[:0] = [HERE, os.path.join(ROOT, "sim"), os.path.join(ROOT, "model"), os
 
 import perf_model as PM  # noqa: E402
 from board import BoardBackend, MaskedBackend, SimEmu  # noqa: E402
-from mlkem import G, PRF, MLKEM768, ReferenceBackend, TimingBackend, sample_poly_cbd  # noqa: E402
+from mlkem import G, PARAMS, PRF, ReferenceBackend, TimingBackend, sample_poly_cbd  # noqa: E402
+
+PS = "ML-KEM-512"           # parameter set (our target); --ps ML-KEM-768 to change
+
+
+def KEM(backend=None):
+    return PARAMS[PS](backend)
 from packet import open_, seal  # noqa: E402
 
 Q = 3329
@@ -69,11 +75,11 @@ class Session:
         wall = time.perf_counter() - t0
         calls, chip_s = dict(self.chip.calls), self.chip.chip_s
         t0 = time.perf_counter()
-        py_fn(MLKEM768())
+        py_fn(KEM())
         py_s = time.perf_counter() - t0
         tb = TimingBackend(ReferenceBackend())
-        py_fn(MLKEM768(backend=tb))
-        pr = PM.predict(op, py_s, wall - chip_s, chip_s, calls)
+        py_fn(KEM(tb))
+        pr = PM.predict(op, py_s, wall - chip_s, chip_s, calls, ps=PS)
         cp = PM.chip_part(calls, tb.seconds, chip_s)
         self.state["perf"][op] = {"measured_s": wall, "chip_s": chip_s, "host_s": wall - chip_s, "python_s": py_s,
                                   "calls": calls, "pred": pr["predicted"], "coef": pr["coefficients"],
@@ -95,7 +101,7 @@ class Session:
     def keygen(self, _):
         rng = random.SystemRandom()
         self.d, z = rng.randbytes(32), rng.randbytes(32)
-        kem = MLKEM768(backend=self.backend())
+        kem = KEM(self.backend())
         d = self.d
         self.ek, self.dk = self._measure("keygen", lambda: kem.keygen_internal(d, z),
                                          lambda k: k.keygen_internal(d, z))
@@ -110,7 +116,7 @@ class Session:
     def encaps(self, _):
         if not self.ek:
             raise ValueError("Alice needs a key pair first")
-        kem, m = MLKEM768(backend=self.backend()), random.SystemRandom().randbytes(32)
+        kem, m = KEM(self.backend()), random.SystemRandom().randbytes(32)
         ek = self.ek
         self.K_bob, self.c = self._measure("encaps", lambda: kem.encaps_internal(ek, m),
                                            lambda k: k.encaps_internal(ek, m))
@@ -122,7 +128,7 @@ class Session:
     def decaps(self, _):
         if not self.c:
             raise ValueError("Bob has not sent a ciphertext yet")
-        kem, dk, c = MLKEM768(backend=self.backend()), self.dk, self.c
+        kem, dk, c = KEM(self.backend()), self.dk, self.c
         self.K_alice = self._measure("decaps", lambda: kem.decaps(dk, c), lambda k: k.decaps(dk, c))
         self.state["alice"]["key"] = self.K_alice.hex()
         same = self.K_alice == self.K_bob
@@ -188,9 +194,10 @@ class Session:
         f = [0] * 256
         for j in range(128):                                     # layer 0 sends b = f[j+128], a = f[j]
             f[j + 128], f[j] = first[2 * j], first[2 * j + 1]
-        rho, sigma = G(self.d + bytes([3]))
-        s0 = sample_poly_cbd(PRF(2, sigma, 0), 2)               # Alice's real secret polynomial
-        guess = [x if (x <= 2 or x >= Q - 2) else None for x in f]
+        p = KEM()
+        rho, sigma = G(self.d + bytes([p.k]))
+        s0 = sample_poly_cbd(PRF(p.eta1, sigma, 0), p.eta1)     # Alice's real secret polynomial
+        guess = [x if (x <= p.eta1 or x >= Q - p.eta1) else None for x in f]   # secret coeffs are in -eta1..eta1
         recovered = sum(g == s for g, s in zip(guess, s0))
         centered = [x - Q if x > Q // 2 else x for x in f]
         bins = [0] * 33
@@ -216,7 +223,7 @@ class Session:
             self.chip.reset_counters()
             self.chip.on_call = self._on_call
             self.state["progress"] = {"op": f"timing run {i + 1}/3", "calls": 0, "t0": time.time()}
-            MLKEM768(backend=self.backend()).keygen_internal(d, z)
+            KEM(self.backend()).keygen_internal(d, z)
             calls = dict(self.chip.calls)
             clocks = sum(n * PM.CLOCKS_PER_CALL[k] for k, n in calls.items())
             rows.append({"key": d.hex()[:12], "calls": sum(calls.values()), "clocks": clocks})
@@ -270,7 +277,7 @@ def make_handler(session):
                 self.end_headers()
                 self.wfile.write(page)
             elif self.path == "/api/state":
-                st = dict(session.state)
+                st = dict(session.state, ps=PS)
                 if st.get("progress", {}).get("t0"):
                     st["progress"] = dict(st["progress"], elapsed=time.time() - st["progress"]["t0"])
                 st["assumptions"] = [[k, v, s] for k, v, s in PM.assumptions()]
@@ -296,7 +303,10 @@ def main():
     ap.add_argument("--port", help="serial port of the Tang Nano")
     ap.add_argument("--baud", type=int, default=1000000)
     ap.add_argument("--http", type=int, default=8080)
+    ap.add_argument("--ps", default="ML-KEM-512", choices=["ML-KEM-512", "ML-KEM-768"], help="parameter set")
     a = ap.parse_args()
+    global PS
+    PS = a.ps
     if a.sim:
         emu, source = SimEmu(), "simulation"
     else:

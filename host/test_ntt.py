@@ -3,7 +3,7 @@ every captured uo_out with the expected bytes (cycle-exact, same files the cocot
 
     make -C fpga prog            # bitstream with the NTT design from src/ (info.yaml)
     python host/test_ntt.py [--port P] [--div 1] [--files a a_shuffle]
-    python host/test_ntt.py --mlkem ML-KEM-768        # full keygen + encaps + decaps on the board
+    python host/test_ntt.py --mlkem ML-KEM-512        # full keygen + encaps + decaps on the board
 """
 import argparse
 import os

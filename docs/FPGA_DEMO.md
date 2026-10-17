@@ -28,7 +28,7 @@ every replug. `make -C fpga flash` makes it permanent, but it replaces the facto
 1. **Polynomial multiply (team Spec 1 demo).** Two random polynomials go through forward NTT,
    forward NTT, basemul, inverse NTT and scale, all on the chip. The CPU checks the answer with a
    schoolbook multiply: 256/256 coefficients must match.
-2. **ML-KEM-768 key exchange.** Alice generates keys, Bob encapsulates, Alice decapsulates.
+2. **ML-KEM-512 key exchange** (our target; `--ps ML-KEM-768` for 768). Alice generates keys, Bob encapsulates, Alice decapsulates.
    Every NTT, basemul and scale runs on the chip; hashing and encoding stay on the PC. The two
    shared keys must be equal and identical to a pure-software FIPS 203 run.
 
@@ -42,7 +42,7 @@ and builds the next layer from them.
 | `01_pin_timing.png` | How the chip talks: valid/sof, coefficients in, result bytes out after the fixed delay D |
 | `02_polymul.png` | Proof it computes correctly: chip result on top of the CPU reference |
 | `03_clocks_per_call.png` | Speed per operation (clocks, and µs at 50 MHz) |
-| `04_mlkem768_chip_work.png` | What the chip does inside one ML-KEM-768 key exchange |
+| `04_mlkem_chip_work.png` | What the chip does inside one ML-KEM-512 key exchange |
 | `pins_forward_ntt.vcd` | Live waveform: `surfer reports/demo/pins_forward_ntt.vcd` (or `gtkwave …`) |
 
 Rehearse without the board: `python3 host/demo.py --sim`. It uses the Python model, and the
@@ -66,8 +66,8 @@ python3 host/live_demo.py          # chip on the Tang Nano (or --sim without the
 | **host-side masking** toggle | Shows the chip-specific risk and its fix. Without masking, Eve probing Alice's chip pins during keygen recovers **256/256** secret coefficients, because layer 1 of the NTT carries them in the clear. With masking she sees uniform noise (0/256), at the cost of 2× chip calls |
 
 The performance panel shows, per operation: the measured run (host + chip), pure Python, the
-coefficients, and the predicted RP2350 and RP2350 + chip times. An exchange takes about 11 s on the board
-(22 s masked), almost all of it USB; on silicon the chip part takes about 1 ms.
+coefficients, and the predicted RP2350 and RP2350 + chip times. An ML-KEM-512 exchange takes about 7 s on the
+board (about twice that masked), almost all of it USB; on silicon the chip part takes about 2 ms.
 
 ## Performance log and the coefficients
 
@@ -114,17 +114,17 @@ DMA removes the host overhead but not that floor.
 python3 tools/perf.py chippart     # Python vs FPGA vs RP2350 software vs silicon, NTT/INTT/basemul/scale only
 ```
 
-For one ML-KEM-768 key exchange (measured Oct 17), see `reports/perf/03_chip_part_only.png`:
+For one ML-KEM-512 key exchange (measured Oct 17), see `reports/perf/03_chip_part_only.png`:
 
 | | time |
 |---|---|
-| pure Python on the PC (measured) | 3.7 ms |
-| chip on the FPGA over USB (measured) | 11.2 s |
-| RP2350 software (cited cycles) | 1.32 ms |
-| silicon, pins only | 2.82 ms |
-| RP2350 + chip, CPU-serial / PIO+DMA / 2 cores | 6.59 / 3.48 / 3.00 ms |
+| pure Python on the PC (measured) | 2.24 ms |
+| chip on the FPGA over USB (measured) | 7.0 s |
+| RP2350 software (cited cycles) | 0.85 ms |
+| silicon, pins only | 1.72 ms |
+| RP2350 + chip, CPU-serial / PIO+DMA / 2 cores | 4.26 / 2.16 / 1.83 ms |
 
-**Current result:** with PIO+DMA the whole operation comes out 0.83–0.90× the speed of the RP2350
+**Current result:** with PIO+DMA the whole operation comes out 0.82–0.91× the speed of the RP2350
 alone. Two things hold it back:
 1. The chip's part is pin-bound at 3 clocks per butterfly, and the M33's software NTT is faster than that.
 2. Most of ML-KEM is hashing (67–75%), which this chip doesn't do.
@@ -153,14 +153,16 @@ Figure: `reports/perf/04_tx_calc_rx_breakdown.png`. Silicon at 50 MHz, RP2350 at
 - The protocol overlaps TX, calc and RX, so a call takes as long as its slowest part. For NTT that's a tie
   between calc and RX.
 - Feeding the chip (pack + unpack) costs the RP2350 more CPU time than doing the NTT itself.
-- On the FPGA, the same exchange measured: TX over USB 3.9 s, chip run 1.3 s (mostly USB round trips),
-  RX over USB 5.9 s, PC packing 0.08 s.
+- On the FPGA, one ML-KEM-512 exchange measured: TX over USB 2.5 s, chip run 0.87 s (mostly USB round trips),
+  RX over USB 3.7 s, PC packing 0.05 s.
+- Whole ML-KEM-512 exchange, chip part only: RP2350 software 0.85 ms; chip calc 1.71 ms; TX 0.83 ms; RX 1.11 ms;
+  overlapped 1.72 ms; RP2350 pack + unpack 1.48 ms.
 
 ## More checks
 
 ```bash
 python3 host/test_ntt.py                      # replay the test stimulus, every byte compared
-python3 host/test_ntt.py --mlkem ML-KEM-768   # replay a full key exchange (141k clocks, ~8 s)
+python3 host/test_ntt.py --mlkem ML-KEM-512   # replay a full key exchange (85,927 clocks, ~5 s)
 ```
 
 ## LEDs
