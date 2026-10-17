@@ -2,6 +2,8 @@
 # See https://docs.cocotb.org/en/stable/quickstart.html for more info
 
 # defaults
+# test.py checks this repo's src/ (2 K-RED rounds, factor 169)
+export NTT_CHIP = own
 SIM ?= icarus
 FST ?= -fst # Use more efficient FST format
 TOPLEVEL_LANG ?= verilog

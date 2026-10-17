@@ -125,7 +125,7 @@ th { color: var(--ink-3); font-weight: 600; }
 <!-- 0 rig -->
 <section id="t-rig" class="on">
   <p class="lead">The demo on the table. The PC plays the RP2350: it runs ML-KEM and packs every coefficient into a pin word.
-    The Tang Nano 20K FPGA runs <b>our chip's Verilog</b>, cycle for cycle. Every chip call goes over USB as three commands:
+    The Tang Nano 20K FPGA runs <b id="rig-form">the chip's hardened gate netlist</b>, cycle for cycle. Every chip call goes over USB as three commands:
     <b>LOAD</b> the pin words into the FPGA's stimulus RAM, <b>RUN</b> them through the chip one clock each, then
     <b>READ_CAP</b> the output pins it captured on every clock. Click an action and watch the bytes move, in slow motion.</p>
   <div class="actions"><button class="btn" data-act="polymul">Multiply two polynomials on the board</button>
@@ -153,11 +153,11 @@ th { color: var(--ink-3); font-weight: 600; }
     <div class="card"><h2>Facts</h2>
       <dl class="kv">
         <dt>process</dt><dd>sky130, Tiny Tapeout, 2×2 tiles</dd>
-        <dt>area</dt><dd>≈ 23,000 µm² of cells</dd>
-        <dt>multiplier</dt><dd>12×12 with K-RED reduction, 1 product / clock</dd>
+        <dt>area</dt><dd>30,758 µm² synthesized, 36,379 µm² placed: 50 % of the 2×2 tiles (TT flow, LVS and DRC clean)</dd>
+        <dt>multiplier</dt><dd>12×12 with 3 K-RED rounds (× 2197, cancelled by the scaled ROM), 1 product / clock</dd>
         <dt>one NTT</dt><dd>896 butterflies, 3 clocks each (output pins)</dd>
         <dt>result delay</dt><dd>fixed: 6 clocks forward, 7 inverse (constant time)</dd>
-        <dt>verified</dt><dd>exhaustive multiplier test, RTL + gate level + FPGA, ML-KEM byte-exact</dd>
+        <dt>verified</dt><dd>RTL + gate level in simulation; on this FPGA the hardened sky130 gate netlist itself, ML-KEM byte-exact</dd>
       </dl>
       <div class="actions" style="margin-top:14px"><button class="btn" data-go="polymul">Start: multiply two polynomials →</button></div>
     </div>
@@ -515,7 +515,9 @@ function drawRig() { const svg = $("rig-svg"); if (!svg) return; svg.innerHTML =
   rbox(svg, 580, 158, 150, 58, ["stimulus RAM", "8192 × 16 bit"]);
   rbox(svg, 580, 230, 150, 58, ["capture RAM", "8192 × 24 bit"]);
   rline(svg, RIG.runIn); rline(svg, RIG.runOut);
-  rbox(svg, 760, 120, 195, 130, ["tt_um_ntt_engine", "our chip's Verilog (src/),", "same pins and timing", "DUT clock 13.5 MHz", ""], { stroke: "--s1", sw: 2 });
+  const ci = status.chip || { top: "tt_um_NTT_Core", form: "sky130 gate netlist" };
+  $("rig-form").textContent = ci.form === "RTL" ? "the chip's Verilog (RTL)" : ci.form === "cycle model" ? "nothing (simulation: the Python cycle model stands in)" : "the chip's hardened sky130 gate netlist";
+  rbox(svg, 760, 120, 195, 130, [ci.top, ci.form === "RTL" ? "the chip's Verilog" : "the same sky130 gates", ci.form === "RTL" ? "(RTL)" : "that go on the chip", "DUT clock 13.5 MHz", ""], { stroke: "--s1", sw: 2 });
   ["LED0 heartbeat", "LED1 busy", "LED2 UART"].forEach((n, i) => { const t = el("text", { x: 288 + i * 46, y: 300, fill: css("--ink-3"), "font-size": 10, "text-anchor": "middle" });
     t.textContent = n.split(" ")[0]; svg.appendChild(t); });
   const lt = el("text", { x: 266, y: 316, fill: css("--ink-3"), "font-size": 10 }); lt.textContent = "heartbeat · busy · UART traffic"; svg.appendChild(lt);

@@ -10,6 +10,8 @@ import os
 import random
 import sys
 
+os.environ.setdefault("NTT_CHIP", "own")   # src/ is this repo's 2-round chip
+
 import cocotb
 from cocotb.clock import Clock
 from cocotb.triggers import ClockCycles, FallingEdge

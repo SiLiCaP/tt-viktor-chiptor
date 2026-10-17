@@ -101,6 +101,9 @@ def system_timeline():
     return out
 
 
+CHIP_INFO = {"top": "tt_um_NTT_Core", "form": "sky130 gate netlist", "factor": 2197, "model": "team"}
+
+
 class RigTap:
     """Sits between the chip backend and the Tang Nano driver (or the simulator) and records what each
     batch does on the USB-UART: the LOAD / RUN / READ_CAP commands, their bytes and how long each took.
@@ -169,7 +172,7 @@ class Showcase:
         self.masked = False
         self.status = {"source": source, "ps": PS, "busy": None, "progress": {}, "log": [], "masked": False,
                        "pins": None, "ver": {s: 0 for s in self.SECTIONS}, "calls_total": 0, "clocks_total": 0,
-                       "rig": self.rig.state()}
+                       "rig": self.rig.state(), "chip": CHIP_INFO}
         self.data = {s: {} for s in self.SECTIONS}
         self.layers = None
         self.kex = {}
@@ -472,7 +475,13 @@ def main():
     ap.add_argument("--port", help="serial port of the Tang Nano")
     ap.add_argument("--baud", type=int, default=1000000)
     ap.add_argument("--http", type=int, default=8080)
+    ap.add_argument("--form", help="what the FPGA runs, for the page (default: gate netlist for the team chip, "
+                                   "RTL for the own chip; matches make -C fpga prog)")
     a = ap.parse_args()
+    import chip_arith
+    top = "tt_um_NTT_Core" if chip_arith.CHIP == "team" else "tt_um_ntt_engine"
+    form = a.form or ("sky130 gate netlist" if chip_arith.CHIP == "team" else "RTL")
+    CHIP_INFO.update(top=top, form="cycle model" if a.sim else form, factor=chip_arith.FACTOR, model=chip_arith.CHIP)
     if a.sim:
         emu, source = SimEmu(), "simulation"
     else:
@@ -480,6 +489,7 @@ def main():
         emu = TTEmu(a.port, a.baud)
         emu.ping()
         source = f"Tang Nano FPGA on {emu.port}"
+    source += f" · {top}, {CHIP_INFO['form']}"
     app = Showcase(emu, source, a.baud)
     app.log("demo", f"chip: {source}")
     srv = ThreadingHTTPServer(("127.0.0.1", a.http), make_handler(app))

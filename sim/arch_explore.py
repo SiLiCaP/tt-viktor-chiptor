@@ -57,7 +57,7 @@ AREA = {
                             "(the 1,600 write-enabled state bits + 25:1 lane read mux dominate)"),
     "keccak_lane_lat": (99218, "measured: keccak_lane_lat.v, latch state storage, verified, synthesized"),
     "keccak_lane_lat_cg": (88000, "ESTIMATE: keccak_lane_lat with clock-gated working registers"),
-    "team_chip": (22903, "measured: chipathon-2026 tt_um_NTT_Core, synthesized"),
+    "team_chip": (22903, "measured: chipathon-2026 tt_um_NTT_Core, plain yosys like the rows above (TT flow: 30,758 synth, 36,379 placed)"),
 }
 KECCAK_CLK = {"keccak_round": 24, "keccak_lane": 1346, "keccak_lane_lat": 1346, "keccak_lane_lat_cg": 1346}
 #            clocks/permutation, measured in RTL simulation

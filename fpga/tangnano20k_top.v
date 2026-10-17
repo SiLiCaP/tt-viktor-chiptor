@@ -53,6 +53,15 @@ module tangnano20k_top #(
   wire [7:0] dut_uio_out;
   wire [7:0] dut_uio_oe;
 
+  // The DUT clock goes onto a global clock network: on general routing its skew (up to 1.6 ns
+  // measured) breaks hold timing in larger designs such as the gate-level netlist.
+  wire       dut_clk_g;
+`ifdef SYNTHESIS
+  BUFG u_dut_clk_bufg (.I(dut_clk), .O(dut_clk_g));
+`else
+  assign dut_clk_g = dut_clk;
+`endif
+
   `TT_TOP dut (
       .ui_in  (dut_ui),
       .uo_out (dut_uo),
@@ -60,7 +69,7 @@ module tangnano20k_top #(
       .uio_out(dut_uio_out),
       .uio_oe (dut_uio_oe),
       .ena    (1'b1),
-      .clk    (dut_clk),
+      .clk    (dut_clk_g),
       .rst_n  (dut_rst_n)
   );
 

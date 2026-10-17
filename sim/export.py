@@ -11,6 +11,9 @@ import os
 import random
 import sys
 
+if __name__ == "__main__":
+    os.environ.setdefault("NTT_CHIP", "own")    # the stimulus files test this repo's src/
+
 HERE = os.path.dirname(os.path.abspath(__file__))
 ROOT = os.path.dirname(HERE)
 sys.path[:0] = [HERE, os.path.join(ROOT, "model")]

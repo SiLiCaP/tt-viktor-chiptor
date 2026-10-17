@@ -1,9 +1,9 @@
-"""Stage 5: replay the Stage-1 stimulus files on the Tang Nano running tt_um_ntt_engine and compare
-every captured uo_out with the expected bytes (cycle-exact, same files the cocotb tests replay).
+"""Stage 5: run the chip on the Tang Nano and compare every captured uo_out with the expected bytes
+(cycle-exact). Expected bytes come from the cycle model sim/chip_a.py for the chip named in NTT_CHIP.
 
-    make -C fpga prog            # bitstream with the NTT design from src/ (info.yaml)
-    python host/test_ntt.py [--port P] [--div 1] [--files a a_shuffle]
-    python host/test_ntt.py --mlkem ML-KEM-512        # full keygen + encaps + decaps on the board
+    make -C fpga prog [GL=1]                           # team chip (default): RTL, or its hardened gate netlist
+    python host/test_ntt.py --seeds 5                  # 5 full ML-KEM-512 keygen + encaps + decaps runs
+    NTT_CHIP=own python host/test_ntt.py --files a a_shuffle   # own RTL (make -C fpga prog DESIGN=own)
 """
 import argparse
 import os
@@ -29,7 +29,12 @@ def main():
     ap.add_argument("--files", nargs="+", default=["a", "a_shuffle"])
     ap.add_argument("--mlkem", choices=list(PARAMS), help="replay a full ML-KEM keygen/encaps/decaps trace")
     ap.add_argument("--seed", type=int, default=1)
+    ap.add_argument("--seeds", type=int, default=1, help="ML-KEM runs with seeds seed .. seed+seeds-1")
     a = ap.parse_args()
+    import chip_arith
+    if chip_arith.CHIP != "own" and not a.mlkem:
+        a.mlkem = "ML-KEM-512"   # the stimulus files expect the own chip (factor 169)
+    print(f"chip model: {chip_arith.CHIP} (K-RED factor {chip_arith.FACTOR})")
     emu = TTEmu(a.port, a.baud)
     print(f"{emu.port}: magic {emu.ping().decode()}")
     emu.set_div(a.div)
@@ -37,15 +42,17 @@ def main():
     runs = []
     if a.mlkem:
         import random
-        rng = random.Random(a.seed)
-        host = Host(ChipA(), record=True)
-        kem, ref = PARAMS[a.mlkem](host), PARAMS[a.mlkem]()
-        d, z, m = (rng.randbytes(32) for _ in range(3))
-        ek, dk = kem.keygen_internal(d, z)
-        K, c = kem.encaps_internal(ek, m)
-        assert kem.decaps(dk, c) == K and (ek, dk) == ref.keygen_internal(d, z) and (K, c) == ref.encaps_internal(ek, m)
-        print(f"{a.mlkem}: {len(host.stats)} chip calls, {len(host.trace.stim)} clocks; shared key {K.hex()[:16]}...")
-        runs.append((a.mlkem, host.trace.stim, host.trace.expect))
+        for seed in range(a.seed, a.seed + a.seeds):
+            rng = random.Random(seed)
+            host = Host(ChipA(), record=True)
+            kem, ref = PARAMS[a.mlkem](host), PARAMS[a.mlkem]()
+            d, z, m = (rng.randbytes(32) for _ in range(3))
+            ek, dk = kem.keygen_internal(d, z)
+            K, c = kem.encaps_internal(ek, m)
+            assert kem.decaps(dk, c) == K and (ek, dk) == ref.keygen_internal(d, z) and (K, c) == ref.encaps_internal(ek, m)
+            print(f"{a.mlkem} seed {seed}: {len(host.stats)} chip calls, {len(host.trace.stim)} clocks; "
+                  f"shared key {K.hex()[:16]}...")
+            runs.append((f"{a.mlkem} seed {seed}", host.trace.stim, host.trace.expect))
     else:
         for name in a.files:
             runs.append((name, *read(os.path.join(ROOT, "test", "stimulus", f"{name}.txt"))))

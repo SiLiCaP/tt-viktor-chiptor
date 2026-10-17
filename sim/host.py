@@ -3,8 +3,8 @@ into per-clock pin stimulus, runs it through a chip model in lockstep, samples u
 offsets of sim/protocol.py and decodes ByteEncode12.
 
 A Host is an ML-KEM backend:  MLKEM768(backend=Host(ChipA()))
-  ntt, invntt: plain results.  basemul: 169 * plain (K-RED).  scale: x * 3303 * 169^-1.
-  factor = 169 tells model/mlkem.py to account for the basemul factor.
+  ntt, invntt: plain results.  basemul: FACTOR * plain (K-RED).  scale: x * 3303 * FACTOR^-1.
+  factor = FACTOR (2197 team chip, 169 own; model/chip_arith.py) tells model/mlkem.py about it.
 
 Each unit's input words are built at the clock they are sent, from coefficients already received
 back. If a coefficient is still in flight the host idles (counted as a stall).

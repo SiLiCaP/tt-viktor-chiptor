@@ -1,7 +1,19 @@
 # Running the chip on the Tang Nano 20K, and the presentation demo
 
-This runs the chip's real Verilog (`src/`) on the FPGA. The PC plays the RP2350. It streams
-coefficients into the chip's pins and reads the result bytes back, clock for clock.
+By default the FPGA runs the **team's tapeout chip** (`tt_um_NTT_Core` from `../chipathon-2026`) as its
+**hardened sky130 gate netlist**: the exact standard cells that go on the chip, each rebuilt from its
+logic function in the sky130 cell library. A bug in synthesis or in the flow would show up here, not
+only a bug in the Verilog. The PC plays the RP2350: it streams coefficients into the chip's pins and
+reads the result bytes back, clock for clock.
+
+| Build | Command | Host model |
+|---|---|---|
+| team chip, gate netlist (default) | `make -C fpga netlist` once per design change (TT flow, ~15 min), then `make -C fpga prog` | default (`NTT_CHIP=team`, factor 2197) |
+| team chip, RTL | `make -C fpga prog GL=0` | default |
+| this repo's RTL (`src/`) | `make -C fpga prog DESIGN=own` (`GL=1` for its netlist) | `NTT_CHIP=own` before every host command |
+
+The netlist build reads the committed state (git HEAD) of the design repo. A netlist from the GitHub GDS
+action also works: `make -C fpga prog GL_NETLIST=path/to/tt_um_NTT_Core.v`.
 
 ## One-time setup (already done on Viktor's machine)
 
@@ -15,10 +27,19 @@ Plug in the board, then in a terminal:
 ```bash
 cd ~/Documents/Projects/Chipathon2026/tt-viktor-chiptor
 source ~/tools/oss-cad-suite/environment
-make -C fpga prog                 # build and load the chip into the FPGA (~20 s)
+make -C fpga prog                 # build and load the chip into the FPGA (gate netlist: ~1 min)
 python3 host/tt_emu.py --ping     # should print: /dev/ttyUSB1: magic TTE1 OK
-python3 host/demo.py              # the demo (~15 s), figures go to reports/demo/
+python3 host/test_ntt.py --seeds 3            # 3 full ML-KEM-512 runs, every output byte checked
+python3 host/showcase.py          # the demo website at http://localhost:8080
 ```
+
+The team's C harness (`chipathon-2026/rp2350`, the RP2350 firmware's code) also runs here:
+`make -C ../chipathon-2026/rp2350/pc && ../chipathon-2026/rp2350/pc/ntt_host --port /dev/ttyUSB1 all`.
+
+**On the real chip.** The RP2350 firmware speaks the same USB protocol (TTE1). With the demo board on
+`/dev/ttyACM0`, the same commands run against the silicon:
+- `python3 host/test_ntt.py --port /dev/ttyACM0`
+- `python3 host/showcase.py --port /dev/ttyACM0 --form silicon`
 
 `make -C fpga prog` loads into SRAM, which is lost when the board loses power. Run it again after
 every replug. `make -C fpga flash` makes it permanent, but it replaces the factory LiteX demo.

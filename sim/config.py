@@ -56,8 +56,9 @@ PARAMS = {
 
     # chip clock limits (prediction coefficient inputs)
     "f_chip_target_hz":     (50e6, "cited: src/config.json CLOCK_PERIOD = 20 ns (the TT flow's timing target)"),
-    "f_chip_sta_typ_hz":    (1 / (20e-9 - 8.501e-9), "measured: local LibreLane STA, typical corner, 8.5 ns slack at 20 ns -> 87 MHz"),
-    "f_chip_sta_slow_hz":   (1 / (20e-9 + 2.309e-9), "measured: local LibreLane STA, ss 100C 1.60 V, -2.31 ns slack -> 44.8 MHz"),
+    "f_chip_sta_typ_hz":    (1 / (20e-9 - 8.791e-9), "measured: team chip tt_um_NTT_Core, local TT-flow harden (LibreLane), "
+                                                     "typical corner, 8.79 ns slack at 20 ns -> 89 MHz"),
+    "f_chip_sta_slow_hz":   (1 / (20e-9 + 2.316e-9), "measured: same harden, ss 100C 1.60 V, -2.32 ns slack -> 44.8 MHz"),
     "f_io_limit_hz":        (50e6, "ASSUMPTION: TT mux/pad/demo-board limit for a lockstep bus; not confirmed"),
 
     # design B3 (overlapped buffers) is not built: handoff estimate
