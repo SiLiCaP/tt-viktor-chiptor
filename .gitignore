@@ -17,3 +17,6 @@ __pycache__/
 fpga/build/
 fpga/sim/sim_build/
 fpga/sim/results_*.xml
+test/units/*.vvp
+test/units/*.log
+tt

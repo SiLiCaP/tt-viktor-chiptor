@@ -20,7 +20,11 @@ There is no handshake: every result appears at a fixed, data-independent clock o
 runs in constant time. The exact frame formats and latencies are in
 [docs/PROTOCOL.md](PROTOCOL.md).
 
-*Work in progress: the current silicon logic is still the template's example.*
+Inside: a 4-bit digit-serial modular multiplier with K-RED reduction (one product every 3 clocks),
+modular adders and accumulators, a 128-entry twiddle ROM, and a control block that counts butterflies
+and basemul pieces. Throughput: one butterfly every 3 clocks (about 2,700 clocks per NTT), one basemul
+piece every 15 clocks. The design has run complete ML-KEM-768 key exchanges, cycle-exact, in simulation
+and on an FPGA.
 
 ## How to test
 

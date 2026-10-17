@@ -1,134 +1,92 @@
 # NTT coprocessor pin protocol
 
-> **Status: APPROVED 2026-10-17.** The RTL must match these latency constants **cycle-exactly**. Every constant lives in [`sim/protocol.py`](../sim/protocol.py);
-> change it there, and the models, host, report and tests all follow.
+This document follows the team specs (Spec 1–5 in `ref-docs/`, Oct 17 2026). It also serves as
+Spec 3's `schedule.md` and `host_timing.md`: the input schedule per mode and the output delays D,
+**measured on the RTL in `src/`**. Every number lives in [`sim/protocol.py`](../sim/protocol.py)
+(Spec 1's `timing.py`). The cocotb tests check the RTL against those numbers clock by clock.
 
-## Pins
+## Pins (Spec 5)
 
 | Pins | Dir | Meaning |
 |---|---|---|
-| `ui_in[7:0]`, `uio_in[3:0]` | in | `din[11:0] = {uio_in[3:0], ui_in}` |
-| `uio_in[4]` | in | `valid`: this clock carries a word |
-| `uio_in[5]` | in | `sof`: start of frame |
-| `uio_in[7:6]` | in | `op`: 00 CT (NTT), 01 GS (INTT), 10 basemul, 11 scale |
-| `uo_out[7:0]` | out | result bytes, ByteEncode12: `b0 = v0[7:0]`, `b1 = {v1[3:0], v0[11:8]}`, `b2 = v1[11:4]` |
-| `uio_out`, `uio_oe` | out | always `0x00` (all bidirectional pins are inputs) |
+| `ui_in[7:0]`, `uio_in[3:0]` | in | coefficient `{uio_in[3:0], ui_in}`, 0..3328 |
+| `uio_in[4]` | in | `valid` |
+| `uio_in[5]` | in | `sof`: together with valid, the first coefficient of a job |
+| `uio_in[7:6]` | in | `op`: 00 forward NTT, 01 inverse NTT, 10 basemul, 11 scale. Read on the sof clock only |
+| `uo_out[7:0]` | out | result bytes, ByteEncode12: `r0[7:0]`, `{r1[3:0], r0[11:8]}`, `r1[11:4]` |
+| `uio_out`, `uio_oe` | out | always `0x00` |
 
-## Cycle convention
+**Cycle convention:** in clock `t` the host drives the pins and samples `uo_out`, then the rising edge
+happens. `uo_out` is a register, so it depends only on earlier clocks. It reads `0x00` whenever no result
+byte is due. There's no output-valid flag, so the host samples at the fixed delays below.
 
-In cycle `t` the host drives the inputs and samples `uo_out`; then the rising edge happens.
-All outputs are registered, so `uo_out` in cycle `t` depends only on inputs from earlier cycles.
-When no result byte is due, `uo_out = 0x00`. There is no output-valid pin and no back-pressure.
-The host knows from the constants below exactly which cycles carry result bytes.
-This is the same convention cocotb and the Tang Nano rig use.
+## Jobs (Spec 3)
 
-## Stream transactions (design A; design B in stream mode)
+- A clock with `valid` and `sof` both high starts a job. `op` is latched and all counters reset, and
+  that coefficient is the job's first input.
+- The job ends by itself after its last input. Further valid words are ignored until the next sof,
+  and so are valid words while no job is running.
+- **Every sof flushes:** anything still in flight is dropped, and `uo_out` reads 0 from 2 clocks after
+  the sof clock. So the host must start a job only after the previous job's last result byte.
 
-| op | words in (consecutive clocks) | result pair |
-|---|---|---|
-| CT | a, b | a + ζb, a − ζb |
-| GS | a, b | a + b, ζ(b − a) |
-| scale | x0, x1 | 3303·x0, 3303·x1 |
-| basemul | a0, a1, b0, b1 | a0b0 + (a1b1)γ, a0b1 + a1b0 |
+| op | Mode | Inputs | Unit (inputs → result pair) | Pairs out |
+|---|---|---|---|---|
+| 00 | Forward NTT | 1792 | b = f[j+len], a = f[j] → (a + bζ, a − bζ) | 896 |
+| 01 | Inverse NTT | 1792 | b = f[j+len], a = f[j] → (a + b, (b − a)ζ) | 896 |
+| 10 | Basemul | 512 | g1, f1, g0, f0 → (c0, c1) | 128 |
+| 11 | Scale | 256 | c, c′ → (scaled c, scaled c′) | 128 |
 
-- The words of one transaction go on **consecutive** clocks with `valid = 1`.
-- If a transaction's first word is in cycle `t0`, its 3 result bytes appear in cycles
-  `t0 + LAT`, `t0 + LAT + 1` and `t0 + LAT + 2`.
-- The next transaction may start at `t0 + PERIOD` at the earliest. Between transactions, `valid = 0`.
+Butterflies come in canonical FIPS 203 order: len = 128, 64, …, 2 forward and len = 2, …, 128 inverse.
+The chip derives every twiddle and γ from its counters.
 
-| op | serial multiplier: PERIOD / LAT | parallel multiplier: PERIOD / LAT |
-|---|---|---|
-| CT, GS | 3 / 8 | 3 / 6 |
-| scale | 6 / 10 | 3 / 6 |
-| basemul | 15 / 22 | 5 / 12 |
+## Schedule and output delay D (measured on the RTL)
 
-PERIOD follows from the multiplier: the serial one takes 3 clocks per product and the parallel one takes 1.
-The output pins can carry at most one pair every 3 clocks, so PERIOD is never below 3.
-LAT is a proposal: each value is the depth of a straightforward pipeline (worked out below) plus about 1 clock of margin.
-The RTL can always add delay registers to reach a larger LAT. It can't go below one.
+Offsets are clocks from a unit's first input. Clocks with `valid` low between the listed offsets are required.
 
-**Counters (design A):**
-- `sof = 1` on a frame's first word resets the layer, butterfly and basemul-pair counters.
-  `op` must stay the same for the whole frame.
-- CT/GS frames carry 896 butterflies in canonical FIPS 203 order. The twiddle is
-  `ZETAS[a_zidx_fwd(layer, n)]` or `ZETAS[a_zidx_inv(layer, n)]`.
-- Basemul frames carry 128 pairs, with `γ_i = basemul_gamma(i)`.
-- Scale frames carry 128 pairs.
+| Mode | Input offsets | Period (next unit at ≥) | **D**: first result byte at | Bytes at |
+|---|---|---|---|---|
+| Forward | b @0, a @1 | 3 | **6** | +6, +7, +8 |
+| Inverse | b @0, a @1 | 3 | **7** | +7, +8, +9 |
+| Basemul | g1 @0, f1 @1, g0 @2, f0 @3 | 15 | **20** | +20, +21, +22 |
+| Scale | c @0, c′ @3 | 6 (3 per coefficient) | **9** | +9, +10, +11 |
 
-**Clocks per polynomial:**
+**Where D comes from**, in clocks: input capture 1, `modq_mul` 4 (`L_MULT`), adders 0 (combinational),
+packer 1, plus the control alignment below.
 
-| | A, serial | A, parallel |
-|---|---|---|
-| NTT / INTT | 896 × 3 + 8 = **2,696** | 2,694 |
-| scale | 127 × 6 + 13 = 775 | 390 |
-| basemul | 127 × 15 + 25 = 1,930 | 650 |
+| Mode | Multiplier starts (pin offset) | Pair ready | Notes |
+|---|---|---|---|
+| Forward | b·ζ′ @1 | @5 | a waits in an operand register; Post ± is combinational |
+| Inverse | (b−a)·ζ′ @2 | @6 | needs both inputs first; a+b goes through a 2-register bypass |
+| Basemul | f1g1 @2, f0g0 @5, m1·γ′ @8 (loop-back), f0g1 @11, f1g0 @14 | @19 | an independent pass is interleaved because L_MULT = 4 > 3 |
+| Scale | c·1441 @1, c′·1441 @4 | @8 | the first result is held as r0 |
 
-**Host-side shuffle (design A):** the host may permute butterflies within a run that shares a
-twiddle. With shuffle on, it waits a fixed LAT clocks after each layer, which adds 48 clocks per NTT.
-Otherwise the next layer's first butterfly might need a result that is still in flight, and the
-resulting stall would depend on the permutation.
+The handoff assumed D = 5 (forward) and 7 (inverse). Inverse matches. Forward is 6 because the
+multiplier starts on the clock after b is captured and takes 4 clocks. Reaching 5 would need
+`L_MULT = 3`, with the reduction and Post ± squeezed into one clock.
 
-## Design B
+**Clocks per job,** with continuous streaming: forward/inverse 895 × 3 + D + 3 (2,694 / 2,695),
+basemul 127 × 15 + 23 = 1,928, scale 127 × 6 + 12 = 774. The host model streams NTT layers back to
+back without stalls; no layer needs a result that's still in flight. With host-side shuffling it adds a
+fixed D-clock gap after each layer.
 
-Every frame starts with a **header word** (`valid = 1`, `sof = 1`):
+## What the output bytes carry (K-RED, Spec 2/3)
 
-| Field | Bits |
+`modq_mul` returns 169·a·b mod q. Twiddles are stored as ζ·169⁻¹, and the scale constant is
+1441 = 3303·169⁻².
+
+| Mode | Pins show |
 |---|---|
-| pass (0 fwd strided, 1 fwd contiguous, 2 inv contiguous, 3 inv strided) | `din[1:0]` |
-| block mode | `din[2]` |
-| block index r or b | `din[6:3]` |
-| shuffle enable | `din[7]` |
-| reserved, must be 0 | `din[11:8]` |
+| Forward, inverse | the plain FIPS 203 result |
+| Basemul | 169 × the plain basemul |
+| Scale | c · 3303 · 169⁻¹ |
 
-**Stream mode (`din[2] = 0`):** the header resets the counters and latches `op` from the op pins.
-Design A's transactions follow, without `sof`, using the same table above.
+The full flow (forward, basemul, inverse, scale) is therefore plain.
+**ML-KEM note for the team:** KeyGen's `t̂ = Â∘ŝ + ê` uses the basemul sum *without* inverse NTT and
+scale, so the host must multiply it by 169⁻¹ = 2285 (k polynomials, 256 multiplications each). Encaps
+and decaps need no correction. `model/mlkem.py` does this automatically for any backend with `factor = 169`.
 
-**Block mode (`din[2] = 1`):**
+## Experimental: design B block mode
 
-| Cycle | What |
-|---|---|
-| `h` | header |
-| `h+1 … h+16` | 16 data words, local index 0..15 in gather order (strided: `r + 16m`; contiguous: `16b + m`) |
-| `h+17 … h+16+C` | compute, fixed length, the same with shuffle on or off |
-| `h+17+C … h+40+C` | 24 result bytes = local pairs (0,1), (2,3), …, (14,15), ByteEncode12 |
-| `≥ h+41+C` | next header |
-
-`C = 3·nbf + 3` (serial) or `nbf + 3` (parallel), where `nbf = 32` for passes 0 and 3 (4 local layers) and
-`nbf = 24` for passes 1 and 2 (3 layers). The `+3` drains the PE pipeline.
-
-| | B1 (serial) | B2 (parallel) |
-|---|---|---|
-| NTT / INTT (32 blocks) | 16 × (140 + 116) = **4,096** | 16 × (76 + 68) = **2,304** |
-| scale, basemul (stream mode) | as A + 1 header clock | as A + 1 header clock |
-
-The handoff's figures (3,968 and 2,176) count `16 in + compute + 24 out` per block. The difference
-of 128 clocks is 32 header clocks plus 32 × 3 drain clocks.
-
-**Shuffle:** a free-running 16-bit Galois LFSR (taps `0xB400`, reset value `0xACE1`) advances every clock.
-At the start of each local layer the chip takes `m = lfsr[2:0]` and `r = lfsr[5:3]`, and runs
-butterfly `k' = ((k ^ m) + r) mod 8` in slot `k`. That gives 64 of the 8! possible orders per layer.
-The butterflies of a layer are independent, so the results are unchanged.
-This exact rule is a proposal too; it doesn't affect pin behaviour.
-
-## Pipeline sketches behind the LAT values (serial multiplier)
-
-- **CT:** a is latched at `t0` and b at `t0+1`. The multiplier's three digits run at `t0+2..4`.
-  Barrett is registered at `t0+5`, add/sub and the packer at `t0+6`, so byte 0 is visible at `t0+7`.
-  Proposed LAT 8.
-- **scale:** x0's product runs at `t0+1..3` and x1's at `t0+4..6`. Barrett is registered at `t0+7` and the
-  packer at `t0+8`, so byte 0 is visible at `t0+9`. Proposed LAT 10.
-- **basemul:** five products on one multiplier, in the order a1b1, a0b0, (a1b1)γ, a0b1, a1b0.
-  They finish by `t0+18`, then Barrett, add and pack take the result to `t0+21`. Proposed LAT 22.
-
-## Protocol violations
-
-The models (`sim/chip_a.py`, `sim/chip_b.py`) raise `ProtocolError` on any of these:
-- a transaction that starts early
-- a gap inside a transaction
-- `op` changing without `sof`
-- data before a header (design B)
-- more than 896 butterflies without `sof`
-- a nonzero reserved header field
-- an output collision
-
-On real silicon, any of these produces undefined results.
+`sim/chip_b.py` keeps the handoff's 16-coefficient block engine as a pin-level model, for a possible
+bigger tile budget. It isn't in the team plan and has no RTL. Its header-word format and timing are in
+`sim/protocol.py`.
