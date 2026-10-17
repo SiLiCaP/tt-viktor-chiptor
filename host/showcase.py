@@ -28,6 +28,7 @@ from board import BoardBackend, MaskedBackend, SimEmu  # noqa: E402
 from mlkem import G, PARAMS, PRF, ReferenceBackend, TimingBackend, byte_decode, sample_poly_cbd  # noqa: E402
 from mlkem_ntt_model import Q, polymul_schoolbook  # noqa: E402
 from packet import open_, seal  # noqa: E402
+from tt_emu import DEPTH, SYNC, enc_load, enc_read_cap, enc_run  # noqa: E402
 
 PS = "ML-KEM-512"
 
@@ -100,19 +101,75 @@ def system_timeline():
     return out
 
 
+class RigTap:
+    """Sits between the chip backend and the Tang Nano driver (or the simulator) and records what each
+    batch does on the USB-UART: the LOAD / RUN / READ_CAP commands, their bytes and how long each took.
+    On the board the times are measured; in --sim they are modelled (10 bits per byte, DUT at 13.5 MHz)."""
+    F_DUT = 27e6 / 2
+
+    def __init__(self, emu, baud, real):
+        self.emu, self.baud, self.real = emu, baud, real
+        self.phase_s = emu.phase_s
+        self.op, self.layer = None, 0
+        self.seq, self.hist = 0, []
+        self.totals = {"out": 0, "in": 0, "cmds": 0, "batches": 0}
+
+    def __getattr__(self, name):
+        return getattr(self.emu, name)
+
+    def run_stream(self, words):
+        words = list(words)
+        before = dict(self.emu.phase_s)
+        caps = self.emu.run_stream(words)
+        chunks = [(i, words[i:i + DEPTH]) for i in range(0, len(words), DEPTH)]
+        load = b"".join(enc_load(0, c) for _, c in chunks)
+        run = b"".join(enc_run(len(c)) for _, c in chunks)
+        rd = b"".join(enc_read_cap(0, len(c)) for _, c in chunks)
+        cap = b"".join(bytes([SYNC, 0]) + bytes(v & 0xFF for t in caps[i:i + len(c)] for v in t) for i, c in chunks)
+        ack = bytes([SYNC, 0])
+        first = next((i for i, c in enumerate(caps) if c[0]), 0)       # results start after the pipeline delay
+        cap_res = bytes(v & 0xFF for t in caps[first:first + 8] for v in t)
+        n_out, n_in = len(load) + len(run) + len(rd), 4 * len(chunks) + len(cap)
+        if self.real:
+            t = {k: self.emu.phase_s[k] - before.get(k, 0.0) for k in ("tx", "calc", "rx")}
+        else:
+            bt = 10 / self.baud
+            t = {"tx": (len(load) + 2) * bt, "calc": len(words) / self.F_DUT + (len(run) + 2) * bt,
+                 "rx": (len(rd) + len(cap)) * bt}
+        self.seq += 1
+        self.totals["out"] += n_out
+        self.totals["in"] += n_in
+        self.totals["cmds"] += 3 * len(chunks)
+        self.totals["batches"] += 1
+        self.hist.append({"seq": self.seq, "op": self.op, "layer": self.layer, "words": len(words),
+                          "out": n_out, "in": n_in, "t": t,
+                          "load": load[:22].hex(), "load_n": len(load), "run": run.hex(), "rd": rd.hex(),
+                          "ack": ack.hex(), "cap": cap[:26].hex(), "cap_n": len(cap),
+                          "cap_first": first, "cap_res": cap_res.hex()})
+        self.hist = self.hist[-30:]
+        self.layer += 1
+        return caps
+
+    def state(self):
+        return {"seq": self.seq, "hist": self.hist[-12:], "totals": self.totals, "baud": self.baud,
+                "real": self.real, "port": getattr(self.emu, "port", "?"), "f_dut": self.F_DUT}
+
+
 class Showcase:
     SECTIONS = ("polymul", "kex", "packet", "eve", "perf", "system")
 
-    def __init__(self, emu, source):
+    def __init__(self, emu, source, baud=1000000):
         self.lock = threading.Lock()
         self.source = source
-        self.chip = BoardBackend(emu)
+        self.rig = RigTap(emu, baud, real=not isinstance(emu, SimEmu))
+        self.chip = BoardBackend(self.rig)
         self.chip.on_call = self._on_call
         self.chip.on_batch = self._on_batch
         self.chip.on_layer = self._on_layer
         self.masked = False
         self.status = {"source": source, "ps": PS, "busy": None, "progress": {}, "log": [], "masked": False,
-                       "pins": None, "ver": {s: 0 for s in self.SECTIONS}, "calls_total": 0, "clocks_total": 0}
+                       "pins": None, "ver": {s: 0 for s in self.SECTIONS}, "calls_total": 0, "clocks_total": 0,
+                       "rig": self.rig.state()}
         self.data = {s: {} for s in self.SECTIONS}
         self.layers = None
         self.kex = {}
@@ -123,6 +180,7 @@ class Showcase:
         pr = self.status["progress"]
         pr["calls"] = pr.get("calls", 0) + 1
         pr["last"] = name
+        self.rig.op, self.rig.layer = name, 0
         self.status["calls_total"] += 1
         pr.setdefault("trail", []).append(name)
         pr["trail"] = pr["trail"][-40:]
@@ -130,6 +188,7 @@ class Showcase:
     def _on_batch(self, b):
         self.status["clocks_total"] += b["clocks"]
         self.status["pins"] = {"op": b["op"], "stim": b["stim"], "uo": b["uo"], "n": self.status["calls_total"]}
+        self.status["rig"] = self.rig.state()
 
     def _on_layer(self, name, layer, f):
         if self.layers is not None and name == "ntt" and len(self.layers) < 7:
@@ -421,7 +480,7 @@ def main():
         emu = TTEmu(a.port, a.baud)
         emu.ping()
         source = f"Tang Nano FPGA on {emu.port}"
-    app = Showcase(emu, source)
+    app = Showcase(emu, source, a.baud)
     app.log("demo", f"chip: {source}")
     srv = ThreadingHTTPServer(("127.0.0.1", a.http), make_handler(app))
     print(f"showcase ({source}) at http://localhost:{a.http}  (Ctrl+C to stop)")

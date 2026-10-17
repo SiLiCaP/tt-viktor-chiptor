@@ -110,7 +110,8 @@ th { color: var(--ink-3); font-weight: 600; }
   </div>
   <div class="pins"><svg id="pins" role="img" aria-label="Live chip pins: the latest batch"></svg></div>
   <nav id="nav">
-    <button data-t="chip" class="on">1 · The chip</button>
+    <button data-t="rig" class="on">0 · Tang Nano rig</button>
+    <button data-t="chip">1 · The chip</button>
     <button data-t="polymul">2 · Multiply polynomials</button>
     <button data-t="kex">3 · Key exchange</button>
     <button data-t="msg">4 · Secret message</button>
@@ -121,8 +122,29 @@ th { color: var(--ink-3); font-weight: 600; }
 </header>
 
 <main>
+<!-- 0 rig -->
+<section id="t-rig" class="on">
+  <p class="lead">The demo on the table. The PC plays the RP2350: it runs ML-KEM and packs every coefficient into a pin word.
+    The Tang Nano 20K FPGA runs <b>our chip's Verilog</b>, cycle for cycle. Every chip call goes over USB as three commands:
+    <b>LOAD</b> the pin words into the FPGA's stimulus RAM, <b>RUN</b> them through the chip one clock each, then
+    <b>READ_CAP</b> the output pins it captured on every clock. Click an action and watch the bytes move, in slow motion.</p>
+  <div class="actions"><button class="btn" data-act="polymul">Multiply two polynomials on the board</button>
+    <button class="btn" data-act="exchange">Run a full key exchange</button>
+    <label class="stat">slow motion <select id="rig-speed"><option value="12" selected>1 ms = 12 ms</option><option value="40">1 ms = 40 ms</option><option value="4">1 ms = 4 ms</option></select></label>
+    <span class="badge" id="rig-mode">–</span><span class="muted" id="rig-skip"></span></div>
+  <div class="card"><h2>The rig</h2><svg id="rig-svg" viewBox="0 0 1000 330" width="100%" role="img" aria-label="PC, USB cable and Tang Nano 20K with the chip inside the FPGA"></svg></div>
+  <div class="grid g2" style="margin-top:14px">
+    <div class="card"><h2>This batch</h2><div id="rig-batch" class="muted">waiting for the first chip call</div></div>
+    <div class="card"><h2>UART monitor: the real bytes of this batch</h2><div id="rig-uart" class="hex" style="max-height:none">–</div></div>
+  </div>
+  <div class="card" style="margin-top:14px"><h2>Since the server started</h2><div id="rig-tot" class="muted">–</div>
+    <p class="muted" style="margin-top:8px">Why a key exchange takes seconds here: every pin word crosses USB twice at 1 Mbaud (2 bytes in, 3 bytes back),
+      and the chip finishes each batch in a fraction of a millisecond. On the Tiny Tapeout board the RP2350 drives the pins
+      directly with PIO and DMA at the chip's clock, so the same exchange is predicted at about 9 ms (tab 7).</p></div>
+</section>
+
 <!-- 1 chip -->
-<section id="t-chip" class="on">
+<section id="t-chip">
   <p class="lead">A post-quantum coprocessor on a Tiny Tapeout tile. The RP2350 (here: the PC) runs ML-KEM;
     our chip does its polynomial arithmetic: forward NTT, inverse NTT, basemul and scale, modulo 3329.
     The strip above shows the chip's real pins, live: coefficients going in, result bytes coming out at a fixed delay.</p>
@@ -274,7 +296,7 @@ $("theme").onclick = () => { const d = getComputedStyle(document.documentElement
   document.documentElement.dataset.theme = d ? "light" : "dark"; try { localStorage.setItem("theme", document.documentElement.dataset.theme); } catch (e) {} redrawAll(); };
 
 // ---------- tabs ----------
-function show(t) { document.querySelectorAll("nav button").forEach(b => b.classList.toggle("on", b.dataset.t === t));
+function show(t) { if (t === "rig" && rigCur) rigStart = performance.now(); document.querySelectorAll("nav button").forEach(b => b.classList.toggle("on", b.dataset.t === t));
   document.querySelectorAll("main section").forEach(s => s.classList.toggle("on", s.id === "t-" + t)); redrawAll(); }
 document.querySelectorAll("nav button").forEach(b => b.onclick = () => show(b.dataset.t));
 document.querySelectorAll("[data-go]").forEach(b => b.onclick = () => show(b.dataset.go));
@@ -461,7 +483,88 @@ function sysTick(now) { if (!sysPlaying) return; const dt = (now - sysLast) / 10
   if (sysT >= sysTotal()) { sysT = sysTotal(); sysPlaying = false; $("sys-play").textContent = "▶ play again"; }
   if ($("t-system").classList.contains("on")) drawSystem(); if (sysPlaying) requestAnimationFrame(sysTick); }
 
-function redrawAll() { drawPins(); drawPinout(); drawPolymul(); drawKex(); drawMsg(); drawEve(); drawPerf(); drawSystem(); }
+// ---------- 0 · Tang Nano rig ----------
+const RIG = { tx: [[200, 168], [275, 168], [395, 168], [450, 168], [550, 168], [566, 186], [580, 186]],
+  runIn: [[730, 186], [760, 186]], runOut: [[760, 226], [745, 226], [745, 258], [730, 258]],
+  rx: [[580, 262], [566, 262], [550, 192], [450, 192], [395, 192], [275, 192], [200, 192]] };
+let rigQ = [], rigSeen = null, rigCur = null, rigStart = -1e9, rigSkipped = 0;
+const spaced2 = h => (h.match(/../g) || []).join(" ");
+function rigDur(b) { const sl = +$("rig-speed").value; return ["tx", "calc", "rx"].map(k => Math.min(2.2, Math.max(0.35, b.t[k] * sl))); }
+function rigState() { if (!rigCur) return null; const d = rigDur(rigCur), e = (performance.now() - rigStart) / 1000; let a = 0;
+  for (let i = 0; i < 3; i++) { if (e < a + d[i]) return { i, p: (e - a) / d[i] }; a += d[i]; } return { i: 3, p: 1 }; }
+function along(pts, f) { const seg = []; let L = 0;
+  for (let i = 1; i < pts.length; i++) { const d = Math.hypot(pts[i][0] - pts[i - 1][0], pts[i][1] - pts[i - 1][1]); seg.push(d); L += d; }
+  let s = f * L; for (let i = 0; i < seg.length; i++) { if (s <= seg[i]) { const t = s / seg[i]; return [pts[i][0] + (pts[i + 1][0] - pts[i][0]) * t, pts[i][1] + (pts[i + 1][1] - pts[i][1]) * t]; } s -= seg[i]; }
+  return pts[pts.length - 1]; }
+function rbox(svg, x, y, w, h, lines, o = {}) { const r = el("rect", { x, y, width: w, height: h, rx: 8, fill: css(o.fill || "--surface"), stroke: css(o.stroke || "--border"), "stroke-width": o.sw || 1 });
+  svg.appendChild(r); lines.forEach((t, i) => { const e = el("text", { x: x + 10, y: y + 20 + i * 16, fill: css(i ? "--ink-2" : "--ink"), "font-size": i ? 12 : 13, "font-weight": i ? 400 : 600 }); e.textContent = t; svg.appendChild(e); }); return r; }
+function rline(svg, pts, c) { svg.appendChild(el("polyline", { points: pts.map(p => p.join(",")).join(" "), fill: "none", stroke: css(c || "--border"), "stroke-width": 2 })); }
+function drawRig() { const svg = $("rig-svg"); if (!svg) return; svg.innerHTML = "";
+  rbox(svg, 10, 95, 190, 150, ["PC (plays the RP2350)", "host/showcase.py", "ML-KEM-512 in Python", "packs 16-bit pin words", "reads 3 bytes per clock"]);
+  svg.appendChild(el("rect", { x: 250, y: 10, width: 740, height: 310, rx: 16, fill: css("--surface-2"), stroke: css("--border") }));
+  const bt = el("text", { x: 266, y: 34, fill: css("--ink"), "font-size": 14, "font-weight": 700 }); bt.textContent = "Tang Nano 20K"; svg.appendChild(bt);
+  rline(svg, RIG.tx.slice(0, 2)); rline(svg, RIG.rx.slice(-2));
+  const ct = el("text", { x: 204, y: 160, fill: css("--ink-3"), "font-size": 11 }); ct.textContent = "USB"; svg.appendChild(ct);
+  rbox(svg, 275, 120, 120, 100, ["BL616", "USB ↔ UART", "bridge", "1 Mbaud"]);
+  svg.appendChild(el("rect", { x: 430, y: 50, width: 545, height: 255, rx: 12, fill: "none", stroke: css("--ink-3"), "stroke-dasharray": "5 4" }));
+  const ft = el("text", { x: 446, y: 72, fill: css("--ink-2"), "font-size": 13, "font-weight": 600 }); ft.textContent = "GW2AR-18 FPGA, 27 MHz"; svg.appendChild(ft);
+  rline(svg, [[395, 168], [450, 168]]); rline(svg, [[450, 192], [395, 192]]);
+  rbox(svg, 450, 130, 100, 80, ["UART", "rx / tx", "8N1"]);
+  rline(svg, [[550, 150], [580, 116]]); rline(svg, RIG.tx.slice(-3)); rline(svg, RIG.rx.slice(0, 3));
+  rbox(svg, 580, 88, 150, 56, ["command decoder", ""]);
+  rbox(svg, 580, 158, 150, 58, ["stimulus RAM", "8192 × 16 bit"]);
+  rbox(svg, 580, 230, 150, 58, ["capture RAM", "8192 × 24 bit"]);
+  rline(svg, RIG.runIn); rline(svg, RIG.runOut);
+  rbox(svg, 760, 120, 195, 130, ["tt_um_ntt_engine", "our chip's Verilog (src/),", "same pins and timing", "DUT clock 13.5 MHz", ""], { stroke: "--s1", sw: 2 });
+  ["LED0 heartbeat", "LED1 busy", "LED2 UART"].forEach((n, i) => { const t = el("text", { x: 288 + i * 46, y: 300, fill: css("--ink-3"), "font-size": 10, "text-anchor": "middle" });
+    t.textContent = n.split(" ")[0]; svg.appendChild(t); });
+  const lt = el("text", { x: 266, y: 316, fill: css("--ink-3"), "font-size": 10 }); lt.textContent = "heartbeat · busy · UART traffic"; svg.appendChild(lt);
+  svg.appendChild(el("g", { id: "rig-dyn" })); rigFrame(); rigPanel(); }
+function rigFrame() { const g = $("rig-dyn"); if (!g) return; g.innerHTML = ""; const st = rigState(), b = rigCur, now = performance.now();
+  const ph = st ? st.i : 3, p = st ? st.p : 1, dot = c => (x, y) => g.appendChild(el("circle", { cx: x, cy: y, r: 4, fill: css(c) }));
+  const flow = (pts, c, n = 7) => { for (let j = 0; j < n; j++) { const [x, y] = along(pts, (p * 2.5 + j / n) % 1); dot(c)(x, y); } };
+  if (ph === 0) flow(RIG.tx, "--s1");
+  if (ph === 1) { flow(RIG.runIn, "--s1", 3); flow(RIG.runOut, "--s2", 4);
+    g.appendChild(el("rect", { x: 760, y: 120, width: 195, height: 130, rx: 8, fill: css("--s1"), opacity: 0.12 + 0.1 * Math.sin(now / 60) })); }
+  if (ph === 2) flow(RIG.rx, "--s2");
+  const bar = (y, f, c) => { g.appendChild(el("rect", { x: 590, y, width: 130, height: 6, rx: 3, fill: css("--surface-2") }));
+    g.appendChild(el("rect", { x: 590, y, width: 130 * Math.max(0, Math.min(1, f)), height: 6, rx: 3, fill: css(c) })); };
+  bar(205, !b ? 0 : ph === 0 ? p : 1, "--s1"); bar(277, !b || ph === 0 ? 0 : ph === 1 ? p : 1, "--s2");
+  const txt = (x, y, s, c = "--ink-2", w = 400) => { const t = el("text", { x, y, fill: css(c), "font-size": 12, "font-weight": w }); t.textContent = s; g.appendChild(t); };
+  if (b) { txt(590, 132, ph === 0 ? `LOAD ${b.words} words` : ph === 1 ? `RUN ${b.words} clocks` : ph === 2 ? `READ_CAP ${b.words}` : "idle", ph < 3 ? "--s1" : "--ink-3", 600);
+    txt(770, 242, ph === 1 ? `clock ${Math.round(p * b.words)} / ${b.words}` : ph > 1 ? `${b.words} clocks done` : "waiting for RUN", ph === 1 ? "--s1" : "--ink-3", 600);
+    txt(10, 270, `${b.op || "?"} · ${b.op === "ntt" || b.op === "invntt" ? "layer " + (b.layer + 1) + " / 7" : "one batch"}`, "--ink", 600);
+    txt(10, 286, ph === 0 ? `sending ${b.load_n.toLocaleString()} B` : ph === 2 ? `receiving ${b.cap_n.toLocaleString()} B` : ph === 1 ? "chip running" : "done", "--ink-3"); }
+  const led = (i, on, c) => g.appendChild(el("circle", { cx: 288 + i * 46, cy: 284, r: 6, fill: on ? css(c) : css("--surface"), stroke: css("--border") }));
+  led(0, Math.floor(now / 625) % 2 === 0, "--s3"); led(1, b && ph < 3, "--s4"); led(2, b && (ph === 0 || ph === 2), "--s2"); }
+function rigPanel() { const r = status.rig; if (!r) return;
+  $("rig-mode").textContent = r.real ? `live: bytes and times measured on ${r.port}` : "simulation: same bytes, times modelled at 1 Mbaud";
+  $("rig-skip").textContent = rigSkipped ? `${rigSkipped} batches not animated (the board is faster than the slow motion)` : "";
+  const T = r.totals; $("rig-tot").innerHTML = `<b>${T.batches.toLocaleString()}</b> batches · <b>${T.cmds.toLocaleString()}</b> commands · `
+    + `<b>${(T.out / 1024).toFixed(1)} kB</b> to the FPGA · <b>${(T.in / 1024).toFixed(1)} kB</b> back · `
+    + `${((T.out + T.in) * 10 / r.baud).toFixed(2)} s of pure wire time at ${(r.baud / 1e6).toFixed(0)} Mbaud`;
+  const b = rigCur; if (!b) return;
+  const tt = b.t.tx + b.t.calc + b.t.rx, row = (n, k, c, d) => `<div style="display:flex;gap:10px;align-items:center;margin:6px 0"><span style="width:120px">${n}</span>`
+    + `<span style="flex:1;background:var(--surface-2);border-radius:4px;height:14px"><i style="display:block;height:14px;border-radius:4px;background:var(${c});width:${(b.t[k] / tt * 100).toFixed(1)}%"></i></span>`
+    + `<span style="width:150px;font-variant-numeric:tabular-nums">${(b.t[k] * 1e3).toFixed(2)} ms · ${d}</span></div>`;
+  $("rig-batch").innerHTML = `<div style="color:var(--ink)"><b>${b.op}</b> ${b.op === "ntt" || b.op === "invntt" ? "layer " + (b.layer + 1) + " of 7" : ""} · ${b.words.toLocaleString()} pin words = ${b.words.toLocaleString()} chip clocks</div>`
+    + row("TX (LOAD)", "tx", "--s1", `${b.load_n.toLocaleString()} B`) + row("calc (RUN)", "calc", "--s3", `${(b.words / r.f_dut * 1e6).toFixed(0)} µs of clocks`)
+    + row("RX (READ_CAP)", "rx", "--s2", `${b.cap_n.toLocaleString()} B`)
+    + `<div class="muted">${r.real ? "measured" : "modelled"}; the chip itself needs ${(b.words / r.f_dut * 1e6).toFixed(0)} µs here and ${(b.words / 50e6 * 1e6).toFixed(1)} µs at 50 MHz</div>`;
+  const ln = (dir, hex, n, what, c) => `<div><span style="color:var(${c})">${dir}</span> ${spaced2(hex)}${n ? ` … <span class="muted">(${n.toLocaleString()} B)</span>` : ""} <span class="muted">· ${what}</span></div>`;
+  $("rig-uart").innerHTML = ln("PC →", b.load, b.load_n, `LOAD 0x10: address 0, ${b.words} words of {uio_in, ui_in}`, "--s1") + ln("← FPGA", b.ack, 0, "A5 00 = ok", "--s2")
+    + ln("PC →", b.run, 0, `RUN 0x11: ${b.words} clocks`, "--s1") + ln("← FPGA", b.ack, 0, "done", "--s2")
+    + ln("PC →", b.rd, 0, `READ_CAP 0x12: ${b.words} samples`, "--s1") + `<div><span style="color:var(--s2)">← FPGA</span> a5 00 <span class="muted">· then 3 bytes per clock (uo_out, uio_out, uio_oe): ${b.cap_first} clocks of zeros while the first inputs pass the pipeline, then the results:</span></div>`
+    + `<div style="padding-left:3.2em">${spaced2(b.cap_res)} … <span class="muted">(${b.cap_n.toLocaleString()} B in all)</span></div>`; }
+function rigIngest() { const r = status.rig; if (!r) return;
+  if (rigSeen === null) { rigSeen = r.seq; rigCur = r.hist[r.hist.length - 1] || null; rigStart = performance.now(); return; }
+  const fresh = r.hist.filter(b => b.seq > rigSeen); if (!fresh.length) return; rigSeen = r.seq; rigQ.push(...fresh);
+  if (rigQ.length > 3) { rigSkipped += rigQ.length - 1; rigQ = rigQ.slice(-1); } }
+(function rigLoop() { if ($("t-rig").classList.contains("on")) { const st = rigState();
+    if ((!st || st.i === 3) && rigQ.length) { rigCur = rigQ.shift(); rigStart = performance.now(); rigPanel(); }
+    rigFrame(); } requestAnimationFrame(rigLoop); })();
+
+function redrawAll() { drawRig(); drawPins(); drawPinout(); drawPolymul(); drawKex(); drawMsg(); drawEve(); drawPerf(); drawSystem(); }
 
 // ---------- polling ----------
 async function poll() {
@@ -475,6 +578,7 @@ function header() {
   $("busy").className = "badge" + (status.busy ? " live" : "");
   $("calls").textContent = status.calls_total.toLocaleString(); $("clocks").textContent = status.clocks_total.toLocaleString();
   $("mask").checked = $("mask2").checked = status.masked;
+  rigIngest();
   document.querySelectorAll("[data-act]").forEach(b => b.disabled = !!status.busy);
   $("log").innerHTML = status.log.slice().reverse().map(l => `<div class="${l.kind}"><span class="muted">${l.t}</span> <span class="who">${l.who}</span>${l.msg}</div>`).join(""); }
 if (window.__INIT) { status = window.__INIT.status; data = window.__INIT.data; for (const s in status.ver) ver[s] = status.ver[s]; header(); }

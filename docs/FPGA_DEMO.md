@@ -56,11 +56,12 @@ python3 host/showcase.py           # or --sim without the board; --http 8081 for
 # then open http://localhost:8080
 ```
 
-Seven tabs, all showing real data from the chip, and a strip in the header with the most recent pin traffic
+Eight tabs, all showing real data from the chip, and a strip in the header with the most recent pin traffic
 (valid, din, uo_out):
 
 | Tab | What the audience sees |
 |---|---|
+| 0 · Tang Nano rig | The demo hardware, animated in slow motion: the PC sends each batch as LOAD / RUN / READ_CAP over the USB-UART (1 Mbaud), the FPGA plays it through our chip's Verilog and returns the captured pins. Real hex bytes, measured times per phase, the board's LEDs, and why a key exchange takes seconds here but about 9 ms on the TT board |
 | 1 · The chip | Pinout, the four operations, the area and the verification path |
 | 2 · Multiply polynomials | Two random polynomials, heatmaps of every NTT layer as it comes back from the chip (slider + play), the result checked against schoolbook multiplication |
 | 3 · Key exchange | Alice's seeds, matrix Â, secret s, public t̂, the 800-byte ek in hex, Bob's ciphertext and both 32-byte shared keys, with a match verdict |
