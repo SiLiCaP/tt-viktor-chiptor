@@ -12,6 +12,10 @@ reads the result bytes back, clock for clock.
 | team chip, RTL | `make -C fpga prog GL=0` | default |
 | this repo's RTL (`src/`) | `make -C fpga prog DESIGN=own` (`GL=1` for its netlist) | `NTT_CHIP=own` before every host command |
 
+**Pico 2 W rig:** `make -C fpga prog TARGET=pico` puts the chip's pins on the headers, for a Pico 2 W running the
+RP2350 firmware. It's the only setup that measures the RP2350's real timing. See [PICO_TANG_RIG.md](PICO_TANG_RIG.md);
+the estimate it feeds is explained in [ESTIMATES.md](ESTIMATES.md).
+
 The netlist build reads the committed state (git HEAD) of the design repo. A netlist from the GitHub GDS
 action also works: `make -C fpga prog GL_NETLIST=path/to/tt_um_NTT_Core.v`.
 

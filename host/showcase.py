@@ -44,7 +44,8 @@ def centered(p):
 def system_timeline():
     """Predicted timeline of one ML-KEM-512 key exchange on the TT board (RP2350 + our chip): the real order
     of chip calls from a model run, host gaps apportioned by the measured Python gaps and scaled to the
-    cited RP2350 host time, chip calls from sim/perf_model.py (PIO+DMA)."""
+    cited RP2350 host time, chip calls from sim/perf_model.py: the firmware as written (rp_fw, measured
+    coefficients once tools/rp_log.py has run on the rig, else estimates); an optimized firmware for comparison."""
     class Rec:
         def __init__(self):
             self.inner, self.factor, self.ev = ReferenceBackend(), 1, []
@@ -92,12 +93,14 @@ def system_timeline():
                 segs.append({"kind": "host", "name": "RP2350: hashing, sampling, encoding", "start": t, "dur": g * scale})
                 t += g * scale
             if i < len(names):
-                b = PM.chip_call_breakdown(names[i], 1, "pio_dma")
+                b = PM.chip_call_breakdown(names[i], 1, "rp_fw")
                 segs.append({"kind": "chip", "name": names[i], "start": t, "dur": b["total_s"], "pins": b["pins_s"]})
                 t += b["total_s"]
-        out["ops"][op] = {"segments": segs, "total": t, "sw_total": PM.rp2350_sw_s(PS, op), "calls": calls}
+        out["ops"][op] = {"segments": segs, "total": t, "sw_total": PM.rp2350_sw_s(PS, op), "calls": calls,
+                          "opt_total": host_total + PM.chip_calls_s(calls, scenario="pio_dma")}
     out["ntt_detail"] = PM.silicon_breakdown("ntt")
-    out["ntt_detail"]["total_dma"] = PM.chip_call_breakdown("ntt", 1, "pio_dma")["total_s"]
+    out["ntt_detail"]["total_dma"] = PM.chip_call_breakdown("ntt", 1, "rp_fw")["total_s"]
+    out["fw_status"] = "measured" if any(s.startswith("measured") for _, s in PM.fw_coeffs().values()) else "estimated"
     return out
 
 

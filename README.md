@@ -12,6 +12,9 @@ repo holds what proves and demonstrates them:
   exchanges match the model byte for byte.
 - **Demo website** (`host/showcase.py`): the rig, polynomial multiplication, key exchange, encrypted
   messages, attacks, performance, and the final RP2350 + chip system.
+- **Pico 2 W + Tang Nano rig** ([docs/PICO_TANG_RIG.md](docs/PICO_TANG_RIG.md)): the RP2350 firmware drives the
+  chip's gate netlist over 26 wires and logs its own timing, which feeds the silicon estimate
+  ([docs/ESTIMATES.md](docs/ESTIMATES.md)). That precise simulation needs both boards connected.
 - **Performance and architecture studies:** `sim/perf_model.py`, `sim/arch_explore.py`,
   `sim/sha3_options.py`, `docs/ARCHITECTURE_OPTIONS.md`, `docs/spec-changes/`.
 - **An earlier chip version** (`src/`, `tt_um_ntt_engine`), with its tests.

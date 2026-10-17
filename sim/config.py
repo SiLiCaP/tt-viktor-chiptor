@@ -56,10 +56,25 @@ PARAMS = {
 
     # chip clock limits (prediction coefficient inputs)
     "f_chip_target_hz":     (50e6, "cited: src/config.json CLOCK_PERIOD = 20 ns (the TT flow's timing target)"),
-    "f_chip_sta_typ_hz":    (1 / (20e-9 - 8.791e-9), "measured: team chip tt_um_NTT_Core, local TT-flow harden (LibreLane), "
-                                                     "typical corner, 8.79 ns slack at 20 ns -> 89 MHz"),
-    "f_chip_sta_slow_hz":   (1 / (20e-9 + 2.316e-9), "measured: same harden, ss 100C 1.60 V, -2.32 ns slack -> 44.8 MHz"),
+    "f_chip_sta_typ_hz":    (1 / (20e-9 - 10.464e-9), "measured: team chip tt_um_NTT_Core at acff283 (timing-closure fixes), "
+                                                      "local TT-flow harden, typical corner, +10.46 ns slack at 20 ns -> 105 MHz"),
+    "f_chip_sta_slow_hz":   (1 / (20e-9 - 1.407e-9), "measured: same harden, ss 100C 1.60 V, +1.41 ns slack -> 53.8 MHz "
+                                                    "(matches the team's own post-PnR figure)"),
     "f_io_limit_hz":        (50e6, "ASSUMPTION: TT mux/pad/demo-board limit for a lockstep bus; not confirmed"),
+
+    # The RP2350 firmware as written (chipathon-2026 rp2350/core/ntt_chip.c): per batch (an NTT layer, a basemul
+    # or a scale job) it builds the input words, streams them through PIO + DMA, then unpacks the results, one
+    # after the other. CPU cycles, estimated from its loops compiled for the Cortex-M33 (arm-none-eabi-gcc 14.2 -O2;
+    # ~1 cycle per instruction, +1 per load and taken branch). tools/rp_log.py replaces them with values fitted to
+    # the firmware's own timing log (perf/rp_coeffs.json) once the Pico 2 W + Tang Nano rig runs.
+    "fw_prep_cyc_input":  (22, "ESTIMATE: run_units word-building loop, 17 instructions per input coefficient"),
+    "fw_prep_cyc_word":   (1.0, "ESTIMATE: memset of the word buffer (idle clocks), per chip clock"),
+    "fw_post_cyc_pair":   (45, "ESTIMATE: unpack loop, 22 instructions per result pair + unpack_pair (12 + call)"),
+    "fw_gather_cyc_unit": (18, "ESTIMATE: ntt_job gather and scatter loops, 6 instructions each per butterfly "
+                               "(NTT jobs only)"),
+    "fw_batch_cyc":       (500, "ESTIMATE: per batch: two DMA channel set-ups, a 64-bit timeout division, completion "
+                                "polling, four timestamps and a log record"),
+    "fw_call_cyc":        (400, "ESTIMATE: per call: two 512-byte memcpy, entry and exit, a log record"),
 
     # design B3 (overlapped buffers) is not built: handoff estimate
     "b3_ntt_clocks":        (950, "ASSUMPTION: handoff estimate ~900-1,000 clocks per NTT/INTT; B3 not simulated"),

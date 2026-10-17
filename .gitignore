@@ -23,3 +23,5 @@ tt
 sim/arch_explore_rtl/sim_build/
 sim/arch_explore_rtl/results.xml
 sim/arch_explore_rtl/sim_build_lat/
+fpga/sim_pico/sim_build/
+fpga/sim_pico/results.xml

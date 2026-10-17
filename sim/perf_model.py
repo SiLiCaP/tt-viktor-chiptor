@@ -13,12 +13,17 @@ so  predicted RP2350 alone      = measured Python-only           x K_py
 What goes into the predictions (all in sim/config.py, each marked cited / measured / ASSUMPTION):
   RP2350 software:  pqm4 m4fspeed cycles (cited) / f_rp, Cortex-M33 ~ Cortex-M4 (assumption)
   RP2350 host part: pqm4 cycles minus the cited software cost of the offloaded calls (ePrint 2022/112)
-  chip calls:       exact protocol clocks per call (from the RTL-matched model) / f_chip, where f_chip is
-                    limited by the timing target, the measured STA and the I/O and PIO limits, plus the
-                    RP2350's packing/unpacking per unit in one of three transfer scenarios (SCENARIOS):
-                    CPU-serial, PIO+DMA double-buffered, PIO+DMA on both cores. The pins move one word
-                    per chip clock in all of them, so the protocol stream is the floor.
+  chip calls:       exact protocol clocks per call (sim/protocol.py job_clocks: the team's timing.py, layer by
+                    layer as the harness runs them) / f_chip, where f_chip is limited by the timing target,
+                    the measured STA and the I/O and PIO limits, plus the RP2350's own work per call in one
+                    of the SCENARIOS. The default, "rp_fw", is the firmware as written (chipathon-2026
+                    rp2350/): per batch it builds the words, streams them, then unpacks, one after the other.
+                    Its CPU costs are ESTIMATES from the compiled loops until tools/rp_log.py fits them to the
+                    firmware's timing log from the Pico 2 W + Tang Nano rig (perf/rp_coeffs.json, then
+                    "measured"). The other scenarios are what-ifs for an optimized firmware.
+See docs/ESTIMATES.md for the whole method and how the chip differs from the FPGA rig.
 """
+import json
 import os
 import sys
 
@@ -26,12 +31,49 @@ HERE = os.path.dirname(os.path.abspath(__file__))
 sys.path[:0] = [HERE, os.path.join(os.path.dirname(HERE), "model")]
 
 from config import PARAMS, PQM4, p  # noqa: E402
+import protocol as P  # noqa: E402
 
-
-# protocol clocks per call (continuous streaming, verified cycle-exact on RTL and FPGA): forward/inverse
-# 895*3 + D + 3, basemul 127*15 + 20 + 3, scale 127*6 + 9 + 3
-CLOCKS_PER_CALL = {"ntt": 2694, "invntt": 2695, "basemul": 1928, "scale": 774}
+OP_OF = {"ntt": P.OP_CT, "invntt": P.OP_GS, "basemul": P.OP_BASEMUL, "scale": P.OP_SCALE}
+# protocol clocks per call, layer by layer as the harness runs them (= docs/host_timing.md for the team chip:
+# 2751, 2765, 655, 394), verified cycle-exact on RTL, gate level and FPGA
+CLOCKS_PER_CALL = {k: P.job_clocks(op) for k, op in OP_OF.items()}
 UNITS_PER_CALL = {"ntt": 896, "invntt": 896, "basemul": 128, "scale": 128}
+BATCHES_PER_CALL = {"ntt": 7, "invntt": 7, "basemul": 1, "scale": 1}
+INPUTS_PER_UNIT = {k: len(P.OFFSETS[op]) for k, op in OP_OF.items()}
+
+RP_COEFFS = os.path.join(os.path.dirname(HERE), "perf", "rp_coeffs.json")
+FW_KEYS = ("fw_prep_cyc_input", "fw_prep_cyc_word", "fw_post_cyc_pair", "fw_gather_cyc_unit", "fw_batch_cyc",
+           "fw_call_cyc")
+
+
+def fw_coeffs():
+    """The firmware's CPU costs: measured (perf/rp_coeffs.json, written by tools/rp_log.py from the RP2350's
+    timing log) where available, else the ESTIMATES in sim/config.py. -> {key: (value, status)}"""
+    out = {k: PARAMS[k] for k in FW_KEYS}
+    if os.path.exists(RP_COEFFS):
+        with open(RP_COEFFS) as fh:
+            m = json.load(fh)
+        for k, v in m.get("coeffs", {}).items():
+            if k in out:
+                out[k] = (v, f"measured: RP2350 timing log, {m.get('source', '?')}")
+    return out
+
+
+def fw_call_parts(op, f=None, corner="nominal"):
+    """One chip call of the firmware as written, part by part, in seconds on the TT board."""
+    c = {k: v for k, (v, _) in fw_coeffs().items()}
+    f = f or f_chip(corner)[0]
+    rp = p("f_rp_hz")
+    units, batches = UNITS_PER_CALL[op], BATCHES_PER_CALL[op]
+    prep = units * INPUTS_PER_UNIT[op] * c["fw_prep_cyc_input"] + CLOCKS_PER_CALL[op] * c["fw_prep_cyc_word"]
+    post = units * c["fw_post_cyc_pair"]
+    other = c["fw_call_cyc"] + (units * c["fw_gather_cyc_unit"] if batches > 1 else 0)
+    overhead = batches * c["fw_batch_cyc"]
+    parts = {"prep_s": prep / rp, "stream_s": CLOCKS_PER_CALL[op] / f, "overhead_s": overhead / rp,
+             "post_s": post / rp, "other_s": other / rp}
+    parts["total_s"] = sum(parts.values())
+    parts["cpu_s"] = parts["total_s"] - parts["stream_s"]
+    return parts
 
 
 def f_chip(corner="nominal"):
@@ -59,11 +101,12 @@ def rp2350_host_s(ps, op, calls):
 
 
 SCENARIOS = {
-    "cpu_serial":    "CPU packs/unpacks, then waits for each transfer (no overlap)",
-    "pio_dma":       "PIO lockstep + DMA, double-buffered: CPU work overlaps the streaming (1 core)",
-    "pio_dma_2core": "as pio_dma, with packing and unpacking split over both M33 cores",
+    "rp_fw":         "the RP2350 firmware as written (rp2350/): per batch build, stream, unpack, one after the other",
+    "cpu_serial":    "what-if: CPU packs/unpacks, then waits for each transfer (no overlap)",
+    "pio_dma":       "what-if: optimized firmware, PIO lockstep + DMA double-buffered, CPU work overlaps the stream",
+    "pio_dma_2core": "what-if: as pio_dma, with packing and unpacking split over both M33 cores",
 }
-DEFAULT_SCENARIO = "pio_dma"
+DEFAULT_SCENARIO = "rp_fw"
 
 
 def _cpu_cycles_per_unit(op, scenario):
@@ -81,6 +124,10 @@ def chip_call_breakdown(op, n=1, scenario=DEFAULT_SCENARIO, corner="nominal"):
          total_s : what the call costs the system (overlapped or not, + setup)"""
     f, _, _ = f_chip(corner)
     pins = CLOCKS_PER_CALL[op] / f
+    if scenario == "rp_fw":
+        fw = fw_call_parts(op, f)
+        return {"pins_s": n * pins, "cpu_s": n * fw["cpu_s"], "total_s": n * fw["total_s"],
+                "bound": "pins" if pins >= fw["cpu_s"] else "CPU", "parts": fw}
     cpu = UNITS_PER_CALL[op] * _cpu_cycles_per_unit(op, scenario) / p("f_rp_hz")
     setup = p("setup_cycles_per_call") / p("f_rp_hz")
     if scenario == "cpu_serial":
@@ -98,18 +145,18 @@ def chip_calls_s(calls, corner="nominal", scenario=DEFAULT_SCENARIO):
 # what crosses the pins and what the chip computes, per call (exact, from the protocol and the RTL)
 WORDS_IN = {"ntt": 1792, "invntt": 1792, "basemul": 512, "scale": 256}      # 1 word per chip clock
 BYTES_OUT = {"ntt": 2688, "invntt": 2688, "basemul": 384, "scale": 384}     # 1 byte per chip clock
-MULT_PRODUCTS = {"ntt": 896, "invntt": 896, "basemul": 640, "scale": 256}   # modq_mul: 1 product / 3 clocks
+MULT_PRODUCTS = {"ntt": 896, "invntt": 896, "basemul": 640, "scale": 256}   # modq_mul: full rate, 1 product / clock
 SW_KEY = {"ntt": "sw_ntt", "invntt": "sw_invntt", "basemul": "sw_basemul", "scale": None}
 
 
 def silicon_breakdown(op, corner="nominal"):
     """One chip call on the TT board, split into its parts. Each part as if it ran alone:
          tx_s    : input words over the 16 input pins (1 word / clock)
-         calc_s  : the chip's own arithmetic: multiplier busy time, as if the data were already inside
+         calc_s  : the chip's own arithmetic: multiplier busy time (full rate since acff283: 1 product / clock)
          rx_s    : result bytes over the 8 output pins (1 byte / clock)
        and what really happens:
-         wall_s  : the protocol overlaps all three; this is the measured-on-RTL clock count
-         pack_s / unpack_s : RP2350 CPU work to feed / drain the PIO FIFOs with DMA
+         wall_s  : the protocol overlaps all three; this is the measured-on-RTL clock count (layer by layer)
+         pack_s / unpack_s : RP2350 CPU work to build the words / unpack the results (the firmware as written)
          rp_sw_s : the same operation done by the RP2350 alone in software (cited cycles; scale is inside iNTT)"""
     f, _, _ = f_chip(corner)
     rp = p("f_rp_hz")
@@ -117,19 +164,20 @@ def silicon_breakdown(op, corner="nominal"):
     sw = SW_KEY[op]
     return {
         "tx_s": WORDS_IN[op] / f,
-        "calc_s": MULT_PRODUCTS[op] * 3 / f,
+        "calc_s": MULT_PRODUCTS[op] / f,
         "rx_s": BYTES_OUT[op] / f,
         "wall_s": CLOCKS_PER_CALL[op] / f,
-        "pack_s": UNITS_PER_CALL[op] * p(f"pack_cyc_{kind}") / rp,
-        "unpack_s": UNITS_PER_CALL[op] * p(f"unpack_cyc_{kind}") / rp,
+        "pack_s": fw_call_parts(op, f)["prep_s"],
+        "unpack_s": fw_call_parts(op, f)["post_s"],
+        "pack_opt_s": UNITS_PER_CALL[op] * p(f"pack_cyc_{kind}") / rp,       # optimized-firmware what-if
+        "unpack_opt_s": UNITS_PER_CALL[op] * p(f"unpack_cyc_{kind}") / rp,
         "rp_sw_s": p(sw) * p("m33_vs_m4") / rp if sw else None,
-        "calc_parallel_s": MULT_PRODUCTS[op] / f,      # what-if: a 12x12 parallel multiplier, 1 product / clock
         "bound": _bound(op),
     }
 
 
 def _bound(op):
-    parts = {"TX pins": WORDS_IN[op], "chip calc": MULT_PRODUCTS[op] * 3, "RX pins": BYTES_OUT[op]}
+    parts = {"TX pins": WORDS_IN[op], "chip calc": MULT_PRODUCTS[op], "RX pins": BYTES_OUT[op]}
     top = max(parts.values())
     return " = ".join(k for k, v in parts.items() if v == top)
 
@@ -179,4 +227,5 @@ def assumptions():
             "f_chip_sta_slow_hz", "f_io_limit_hz", "setup_cycles_per_call", "cpu_serial_cyc_bf", "pio_dma_cyc_bf",
             "pio_dma_cyc_piece", "pio_dma_cyc_scale", "cores", "pack_cyc_bf", "unpack_cyc_bf", "pack_cyc_piece",
             "unpack_cyc_piece", "pack_cyc_scale", "unpack_cyc_scale"]
-    return [(k, PARAMS[k][0], PARAMS[k][1]) for k in keys]
+    fw = fw_coeffs()
+    return [(k, PARAMS[k][0], PARAMS[k][1]) for k in keys] + [(k, v, s) for k, (v, s) in fw.items()]

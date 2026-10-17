@@ -202,7 +202,8 @@ def chippart(args):
     for op in ("ntt", "invntt", "basemul", "scale"):
         b = {sc: PM.chip_call_breakdown(op, 1, sc) for sc in PM.SCENARIOS}
         sw = {"ntt": PM.p("sw_ntt"), "invntt": PM.p("sw_invntt"), "basemul": PM.p("sw_basemul"), "scale": 0}[op] / PM.p("f_rp_hz")
-        print(f"  {op:8} pins {b['pio_dma']['pins_s'] * 1e6:6.1f} µs | CPU-serial {b['cpu_serial']['total_s'] * 1e6:6.1f} | "
+        print(f"  {op:8} pins {b['pio_dma']['pins_s'] * 1e6:6.1f} µs | firmware as written {b['rp_fw']['total_s'] * 1e6:6.1f} | "
+              f"CPU-serial {b['cpu_serial']['total_s'] * 1e6:6.1f} | "
               f"PIO+DMA {b['pio_dma']['total_s'] * 1e6:6.1f} ({b['pio_dma']['bound']}-bound) | "
               f"2 cores {b['pio_dma_2core']['total_s'] * 1e6:6.1f} ({b['pio_dma_2core']['bound']}-bound) | "
               f"RP2350 software {sw * 1e6:5.1f} µs")
@@ -305,20 +306,20 @@ def breakdown(args):
         print(f"{c:9}| {us(b['rp_sw_s']):>12} {py[c] * 1e6:9.1f} | {us(b['tx_s'])} {us(b['calc_s'])} {us(b['rx_s'])} "
               f"{us(b['wall_s']):>10} {b['bound']:>20} | {us(b['pack_s']):>9} {us(b['unpack_s']):>9} | "
               f"{ms(fpga[c]['pack'])} {ms(fpga[c]['tx'])} {ms(fpga[c]['calc'])} {ms(fpga[c]['rx'])}")
-    print("  what-if parallel 12x12 multiplier (1 product/clock): calc " +
-          ", ".join(f"{c} {si[c]['calc_parallel_s'] * 1e6:.1f} µs" for c in CALLS) + "; the pins then set the time")
+    print("  calc = multiplier busy time at full rate (1 product / clock, the chip since acff283); "
+          "pack / unpack = the RP2350 firmware as written (docs/ESTIMATES.md)")
 
     print(f"\nONE {PS} KEY EXCHANGE, only the chip's part ({', '.join(f'{ncalls[c]} {c}' for c in CALLS)})")
     tot = lambda key: sum(ncalls[c] * (si[c][key] or 0) for c in CALLS)
     rows = [("RP2350 alone, software calc (cited)", tot("rp_sw_s")),
             ("Python on the PC, calc (measured)", sum(ncalls[c] * py[c] for c in CALLS)),
-            ("silicon: chip calc only (serial multiplier)", tot("calc_s")),
-            ("silicon: chip calc only (what-if parallel mult.)", tot("calc_parallel_s")),
+            ("silicon: chip calc only (full-rate multiplier)", tot("calc_s")),
             ("silicon: TX over the pins", tot("tx_s")),
             ("silicon: RX over the pins", tot("rx_s")),
             ("silicon: TX + calc + RX overlapped (real)", tot("wall_s")),
-            ("RP2350 CPU: pack (PIO+DMA feeding)", tot("pack_s")),
-            ("RP2350 CPU: unpack (PIO+DMA draining)", tot("unpack_s")),
+            ("RP2350 CPU: pack (firmware as written)", tot("pack_s")),
+            ("RP2350 CPU: unpack (firmware as written)", tot("unpack_s")),
+            ("RP2350 CPU: pack + unpack (optimized, what-if)", tot("pack_opt_s") + tot("unpack_opt_s")),
             (f"{label} measured: PC pack/unpack (Python)", sum(ncalls[c] * fpga[c]["pack"] for c in CALLS)),
             (f"{label} measured: TX over USB", sum(be.phases.get(c, {}).get("tx", 0) for c in CALLS)),
             (f"{label} measured: chip run (incl. USB round trip)", sum(be.phases.get(c, {}).get("calc", 0) for c in CALLS)),
@@ -338,12 +339,12 @@ def breakdown(args):
             (axes[0], 1e6, "µs", "One NTT call", lambda key: si["ntt"][key]),
             (axes[1], 1e3, "ms", f"{PS} key exchange, chip's part", tot)):
         items = [("RP2350 alone (software)", getter("rp_sw_s"), SERIES[1]),
-                 ("chip calc (serial mult.)", getter("calc_s"), SERIES[0]),
-                 ("chip calc (parallel mult., what-if)", getter("calc_parallel_s"), SERIES[0]),
+                 ("chip calc (full-rate mult.)", getter("calc_s"), SERIES[0]),
                  ("TX over pins", getter("tx_s"), SERIES[2]),
                  ("RX over pins", getter("rx_s"), SERIES[2]),
                  ("TX+calc+RX overlapped (real)", getter("wall_s"), SERIES[3]),
-                 ("RP2350 CPU pack + unpack (PIO+DMA)", getter("pack_s") + getter("unpack_s"), SERIES[1])]
+                 ("RP2350 CPU pack + unpack (firmware as written)", getter("pack_s") + getter("unpack_s"), SERIES[1]),
+                 ("RP2350 CPU pack + unpack (optimized, what-if)", getter("pack_opt_s") + getter("unpack_opt_s"), SERIES[1])]
         names = [i[0] for i in items]
         vals = [i[1] * scale for i in items]
         bars = ax.barh(names, vals, height=0.55, color=[i[2] for i in items], edgecolor=SURFACE, linewidth=2)

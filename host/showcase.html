@@ -251,8 +251,9 @@ th { color: var(--ink-3); font-weight: 600; }
 <section id="t-system">
   <p class="lead">How the finished product would work on the Tiny Tapeout demo board. The RP2350 runs ML-KEM and keeps every
     key and polynomial in its SRAM; one PIO state machine clocks our chip in lockstep while DMA streams the words.
-    The timeline is one ML-KEM-512 key exchange, <b>predicted</b> from the chip's exact clock counts (50 MHz) and cited
-    RP2350 cycle counts, played in slow motion.</p>
+    The timeline is one ML-KEM-512 key exchange, <b>predicted</b> from the chip's exact clock counts (50 MHz), cited
+    RP2350 cycle counts and the RP2350 firmware's own costs (estimated from its compiled code until the Pico 2 W +
+    Tang Nano rig measures them), played in slow motion.</p>
   <div class="card"><h2>The board</h2><svg id="sys-board" viewBox="0 0 980 300" width="100%" role="img" aria-label="RP2350 and chip block diagram"></svg>
     <div class="actions" style="margin:6px 0 0"><button class="btn" id="sys-play">▶ play the key exchange</button>
       <label class="stat">speed <select id="sys-speed"><option value="0.0005">1 ms = 2 s</option><option value="0.001" selected>1 ms = 1 s</option><option value="0.004">1 ms = 0.25 s</option></select></label>
@@ -261,9 +262,9 @@ th { color: var(--ink-3); font-weight: 600; }
     <div class="legend"><span><i style="background:var(--s2)"></i>RP2350 working (hashing, sampling, encoding)</span><span><i style="background:var(--s1)"></i>chip call (pins + chip, RP2350 feeding via PIO/DMA)</span></div>
   </div>
   <div class="grid g2" style="margin-top:14px">
-    <div class="card"><h2>One key exchange: RP2350 alone vs RP2350 + our chip (predicted)</h2><svg id="sys-cmp" width="100%" height="150" role="img" aria-label="Comparison"></svg></div>
-    <div class="card"><h2>Inside one NTT call: the three parts overlap</h2><div class="cap" style="margin:-6px 0 6px">microseconds, at 50 MHz</div><svg id="sys-ntt" width="100%" height="150" role="img" aria-label="One NTT call"></svg>
-      <p class="muted">The pins move one word in and one byte out per clock. Results come back 6 clocks after their inputs, so input, compute and output run at the same time; the RP2350 has to keep up packing and unpacking.</p></div>
+    <div class="card"><h2>One key exchange: RP2350 alone vs RP2350 + our chip (predicted)</h2><svg id="sys-cmp" width="100%" height="156" role="img" aria-label="Comparison"></svg></div>
+    <div class="card"><h2>Inside one NTT call: the chip's part and the RP2350's part</h2><div class="cap" style="margin:-6px 0 6px">microseconds, at 50 MHz</div><svg id="sys-ntt" width="100%" height="150" role="img" aria-label="One NTT call"></svg>
+      <p class="muted">The pins move one word in and one byte out per clock, and results come back 6 clocks after their inputs, so input, compute and output overlap on the chip. The RP2350's packing and unpacking, as the firmware is written today, take about ten times longer than the chip's part: that, not the chip, sets the speed (docs/ESTIMATES.md).</p></div>
   </div>
 </section>
 
@@ -466,12 +467,14 @@ function drawSystem() { if (!data.system || !data.system.ops) return; const g = 
   $("sys-what").textContent = g ? (g.kind === "host" ? `${g.op}: RP2350 hashing / sampling / encoding` : `${g.op}: chip ${g.name} (${(g.dur * 1e6).toFixed(0)} µs)`) : "";
   // comparison
   const svg = $("sys-cmp"); svg.innerHTML = ""; const S = data.system, W = svg.clientWidth || 400;
-  const alone = ["keygen", "encaps", "decaps"].reduce((a, o) => a + S.ops[o].sw_total, 0), withc = sysTotal(), mx = Math.max(alone, withc) * 1.25;
-  [["RP2350 alone", alone, "--s2"], ["RP2350 + our chip", withc, "--s1"]].forEach(([n, v, c], i) => { const y = 20 + i * 55;
+  const alone = ["keygen", "encaps", "decaps"].reduce((a, o) => a + S.ops[o].sw_total, 0), withc = sysTotal(),
+    opt = ["keygen", "encaps", "decaps"].reduce((a, o) => a + (S.ops[o].opt_total || 0), 0), mx = Math.max(alone, withc, opt) * 1.25;
+  [["RP2350 alone", alone, "--s2"], [`+ our chip, firmware as written (${S.fw_status || "estimated"})`, withc, "--s1"],
+   ["+ our chip, optimized firmware (what-if)", opt, "--s3"]].forEach(([n, v, c], i) => { const y = 6 + i * 40;
     const t = el("text", { x: 0, y: y + 4, fill: css("--ink-2"), "font-size": 12 }); t.textContent = n; svg.appendChild(t);
     svg.appendChild(el("rect", { x: 0, y: y + 12, width: v / mx * W, height: 20, rx: 4, fill: css(c) }));
     const u = el("text", { x: v / mx * W + 6, y: y + 27, fill: css("--ink"), "font-size": 12 }); u.textContent = `${(v * 1e3).toFixed(2)} ms`; svg.appendChild(u); });
-  const ft = el("text", { x: 0, y: 140, fill: css("--ink-3"), "font-size": 11 }); ft.textContent = `${(alone / withc).toFixed(2)}× — the chip is correct and constant-time, but ¾ of ML-KEM is hashing, which stays on the RP2350`; svg.appendChild(ft);
+  const ft = el("text", { x: 0, y: 146, fill: css("--ink-3"), "font-size": 11 }); ft.textContent = `${(alone / withc).toFixed(2)}× as written, ${(alone / opt).toFixed(2)}× optimized: the RP2350's own packing work dominates the chip calls, and ¾ of ML-KEM is hashing (docs/ESTIMATES.md)`; svg.appendChild(ft);
   // one NTT
   const n = S.ntt_detail, sv = $("sys-ntt"); sv.innerHTML = ""; const W2 = sv.clientWidth || 400, m2 = n.total_dma * 1.15, xs = t => 120 + t / m2 * (W2 - 160);
   [["TX pins", 0, n.tx_s, "--s3"], ["chip calc", 0, n.calc_s, "--s1"], ["RX pins", 0.12e-6, n.rx_s, "--s3"], ["RP2350 pack+unpack", 0, n.pack_s + n.unpack_s, "--s2"]].forEach(([nm, a, d, c], i) => { const y = 8 + i * 30;

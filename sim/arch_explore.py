@@ -57,17 +57,22 @@ AREA = {
                             "(the 1,600 write-enabled state bits + 25:1 lane read mux dominate)"),
     "keccak_lane_lat": (99218, "measured: keccak_lane_lat.v, latch state storage, verified, synthesized"),
     "keccak_lane_lat_cg": (88000, "ESTIMATE: keccak_lane_lat with clock-gated working registers"),
-    "team_chip": (22903, "measured: chipathon-2026 tt_um_NTT_Core, plain yosys like the rows above (TT flow: 30,758 synth, 36,379 placed)"),
+    "team_chip": (22903, "measured: chipathon-2026 tt_um_NTT_Core, plain yosys like the rows above (TT flow at "
+                         "acff283: 31,799 synth, 38,128 placed)"),
 }
+AREA["team_fw"] = AREA["team_chip"]
 KECCAK_CLK = {"keccak_round": 24, "keccak_lane": 1346, "keccak_lane_lat": 1346, "keccak_lane_lat_cg": 1346}
 #            clocks/permutation, measured in RTL simulation
 
-# NTT-engine time per call on the TT board, PIO+DMA (from sim/perf_model.py for A; others ESTIMATE)
+# NTT-engine time per call on the TT board at 50 MHz, transfers included, from sim/perf_model.py:
+#   team_fw    the team chip with the RP2350 firmware as written (rp_fw: CPU-bound, ESTIMATE until the rig log)
+#   team_chip  the team chip with an optimized, overlapped firmware (pio_dma what-if)
+#   ntt_B3_par block engine (not built): ~950 clocks per NTT + gather/scatter, ESTIMATE
+import perf_model as PM  # noqa: E402
 NTT_CALL_US = {
-    "team_chip": {"ntt": 75.0, "invntt": 75.0, "basemul": 42.1, "scale": 18.3},      # same protocol as ntt_A
-    "ntt_A": {"ntt": 75.0, "invntt": 75.0, "basemul": 42.1, "scale": 18.3},          # model, CPU-bound feeding
-    "ntt_A_par": {"ntt": 75.0, "invntt": 75.0, "basemul": 14.0, "scale": 9.0},       # basemul 5 clk/piece
-    "ntt_B3_par": {"ntt": 25.0, "invntt": 25.0, "basemul": 14.0, "scale": 9.0},      # ~950 clk + gather/scatter
+    "team_fw": {k: PM.chip_call_breakdown(k, 1, "rp_fw")["total_s"] * 1e6 for k in PM.CLOCKS_PER_CALL},
+    "team_chip": {k: PM.chip_call_breakdown(k, 1, "pio_dma")["total_s"] * 1e6 for k in PM.CLOCKS_PER_CALL},
+    "ntt_B3_par": {"ntt": 25.0, "invntt": 25.0, "basemul": 16.6, "scale": 10.7},
 }
 HASH_SETUP_CYC = 300                                                              # ASSUMPTION per hash call
 
@@ -95,9 +100,9 @@ def option_time(op, ntt=None, keccak=None):
 
 OPTIONS = [
     ("RP2350 alone (software)", None, None),
-    ("today: NTT engine A", "ntt_A", None),
-    ("A + parallel multiplier (same area)", "ntt_A_par", None),
-    ("NTT block engine B3 + parallel mult.", "ntt_B3_par", None),
+    ("team chip, firmware as written (est.)", "team_fw", None),
+    ("team chip, optimized firmware", "team_chip", None),
+    ("NTT block engine B3, optimized firmware", "ntt_B3_par", None),
     ("Keccak lane-serial (measured RTL)", None, "keccak_lane"),
     ("Keccak lane-serial, latch state (measured)", None, "keccak_lane_lat"),
     ("  + clock-gated registers (est.)", None, "keccak_lane_lat_cg"),
@@ -186,30 +191,23 @@ def plot(rows, path):
 
 
 def clock_sweep():
-    """Chip clock 50 vs 66 MHz (TT pad limit, specs/clock), today's schedule vs the full-rate one,
-    for two RP2350 feeding scenarios. Uses sim/perf_model.py (cited RP2350 host part + chip calls)."""
-    import perf_model as PM
+    """Chip clock 50 vs 66 MHz (TT pad limit, specs/clock) for the firmware as written and for an optimized
+    firmware on one or two cores. Uses sim/perf_model.py (cited RP2350 host part + chip calls)."""
     from config import PARAMS
     keep = {k: PARAMS[k] for k in ("f_chip_target_hz", "f_io_limit_hz")}
-    sched = {"today": dict(PM.CLOCKS_PER_CALL),
-             "full-rate (spec change 1)": {**PM.CLOCKS_PER_CALL, "basemul": 650, "scale": 391}}
-    print(f"\nclock sweep, {PS}, one key exchange (keygen + encaps + decaps), transfers included:")
-    print(f"  {'chip clock':10} {'schedule':26} {'PIO+DMA 1 core':>16} {'PIO+DMA 2 cores':>16}   (RP2350 alone "
-          f"{sum(rp_split(op)[0] for op in CALLS) * 1e3:.2f} ms)")
+    scen = ("rp_fw", "pio_dma", "pio_dma_2core")
     base = sum(rp_split(op)[0] for op in CALLS)
+    print(f"\nclock sweep, {PS}, one key exchange (keygen + encaps + decaps), transfers included "
+          f"(RP2350 alone {base * 1e3:.2f} ms):")
+    print(f"  {'chip clock':10} " + " ".join(f"{s_:>18}" for s_ in ("firmware as written", "optimized, 1 core", "optimized, 2 cores")))
     rows = []
     for f in (50e6, 66e6):
         PARAMS["f_chip_target_hz"] = (f, "sweep")
         PARAMS["f_io_limit_hz"] = (f, "sweep")
-        for name, clk in sched.items():
-            PM.CLOCKS_PER_CALL.update(clk)
-            res = []
-            for sc in ("pio_dma", "pio_dma_2core"):
-                t = sum(PM.rp2350_host_s(PS, op, CALLS[op]) + PM.chip_calls_s(CALLS[op], scenario=sc) for op in CALLS)
-                res.append(t)
-            rows.append((f, name, res))
-            print(f"  {f / 1e6:6.0f} MHz {name:26} " + " ".join(f"{t * 1e3:7.2f} ms {base / t:5.2f}x" for t in res))
-    PM.CLOCKS_PER_CALL.update(sched["today"])
+        res = [sum(PM.rp2350_host_s(PS, op, CALLS[op]) + PM.chip_calls_s(CALLS[op], scenario=sc) for op in CALLS)
+               for sc in scen]
+        rows.append((f, res))
+        print(f"  {f / 1e6:6.0f} MHz " + " ".join(f"{t * 1e3:8.2f} ms {base / t:5.2f}x" for t in res))
     PARAMS.update(keep)
     return rows
 

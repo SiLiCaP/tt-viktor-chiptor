@@ -10,6 +10,9 @@
 #                    standard cell is rebuilt from its logic function in the sky130 liberty file, so the FPGA
 #                    runs the exact gates that go on the chip. Default for the team chip; GL=0 for its RTL.
 #                    GL_NETLIST=path overrides the netlist (e.g. the gate-level netlist from the GDS action).
+# Test rig:          make -C fpga prog TARGET=pico      the chip's pins on the headers, for a Pico 2 W running the
+#                    RP2350 firmware (TT_TARGET=pico2w_tang): wiring in docs/PICO_TANG_RIG.md. Default TARGET=uart:
+#                    the PC drives the chip over USB (fpga/PROTOCOL.md).
 # Override the DUT:  make -C fpga TT_TOP=tt_um_other [EXTRA_SRCS=path/to/extra.v]
 # Self-test DUT:     make -C fpga prog TT_TOP=tt_um_emu_selftest EXTRA_SRCS=$(pwd)/fpga/sim/tt_um_emu_selftest.v
 
@@ -26,6 +29,7 @@ GL        ?= $(if $(filter team,$(DESIGN)),1,0)
 HARDEN_DIR := $(FPGA_DIR)build/harden/$(TT_TOP)
 GL_NETLIST ?= $(firstword $(wildcard $(DESIGN_ROOT)/runs/wokwi/final/nl/$(TT_TOP).nl.v $(HARDEN_DIR)/runs/wokwi/final/nl/$(TT_TOP).nl.v))
 SKY130_LIB ?= $(firstword $(wildcard $(HOME)/.ciel/ciel/sky130/versions/*/sky130A/libs.ref/sky130_fd_sc_hd/lib/sky130_fd_sc_hd__tt_025C_1v80.lib))
+TARGET    ?= uart
 ifeq ($(GL),1)
 DUT_SRCS  := $(GL_NETLIST) $(FPGA_DIR)sky130_phys_cells.v $(EXTRA_SRCS)
 READ_CELLS := read_liberty -ignore_miss_func $(SKY130_LIB);
@@ -35,12 +39,22 @@ DUT_SRCS  := $(addprefix $(DESIGN_ROOT)/src/,$(SRC_FILES)) $(EXTRA_SRCS)
 READ_CELLS :=
 BUILD     := $(FPGA_DIR)build/$(TT_TOP)
 endif
+ifeq ($(TARGET),pico)
+WRAP_SRCS := $(FPGA_DIR)tangnano20k_pico_top.v
+WRAP_TOP  := tangnano20k_pico_top
+WRAP_PARAMS :=
+CST       := $(FPGA_DIR)tangnano20k_pico.cst
+BUILD     := $(BUILD)_pico
+else
 WRAP_SRCS := $(FPGA_DIR)uart.v $(FPGA_DIR)tangnano20k_top.v
+WRAP_TOP  := tangnano20k_top
+WRAP_PARAMS = chparam -set BAUD $(BAUD) tangnano20k_top;
+CST       := $(FPGA_DIR)tangnano20k.cst
+endif
 
 BAUD   ?= 1000000    # measured: 1 Mbaud stable; 1.5 and 3 Mbaud lose bytes in long readbacks (BL616)
 DEVICE := GW2AR-LV18QN88C8/I7
 FAMILY := GW2A-18C
-CST    := $(FPGA_DIR)tangnano20k.cst
 
 .PHONY: all prog flash sim clean info netlist check_netlist
 
@@ -50,11 +64,12 @@ info:
 	@echo "DESIGN   = $(DESIGN) ($(DESIGN_ROOT))"
 	@echo "TT_TOP   = $(TT_TOP)"
 	@echo "GL       = $(GL)"
+	@echo "TARGET   = $(TARGET) ($(WRAP_TOP), $(notdir $(CST)))"
 	@echo "DUT_SRCS = $(DUT_SRCS)"
 
 $(BUILD)/top.json: $(DUT_SRCS) $(WRAP_SRCS) $(DESIGN_ROOT)/info.yaml | check_netlist $(BUILD)
 	yosys -q -l $(BUILD)/yosys.log -D TT_TOP=$(TT_TOP) \
-	  -p "$(READ_CELLS) read_verilog $(DUT_SRCS) $(WRAP_SRCS); chparam -set BAUD $(BAUD) tangnano20k_top; synth_gowin -top tangnano20k_top -json $@"
+	  -p "$(READ_CELLS) read_verilog $(DUT_SRCS) $(WRAP_SRCS); $(WRAP_PARAMS) synth_gowin -top $(WRAP_TOP) -json $@"
 
 $(BUILD)/pnr.json: $(BUILD)/top.json $(CST)
 	nextpnr-himbaechel -q -l $(BUILD)/nextpnr.log --json $< --write $@ \

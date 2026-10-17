@@ -37,7 +37,46 @@ def use_full_rate():
     """Switch every importer of OFFSETS / PERIOD / LAT to the proposed full-rate schedule (in place)."""
     for name, table in FULL_RATE.items():
         globals()[name].update(table)
+
+
+def _team_timing():
+    """The team chip's timing, read from chipathon-2026/test/timing.py (the team's single source, also the
+    source of the RP2350 firmware's timing.h) when that repo is next to this one; else the copy below,
+    taken from it on Oct 17 (main acff283: full-rate basemul and scale, PRE_LAT = 1)."""
+    import importlib.util
+    import os
+    path = os.path.join(os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__)))),
+                        "chipathon-2026", "test", "timing.py")
+    if os.path.exists(path):
+        spec = importlib.util.spec_from_file_location("team_timing", path)
+        T = importlib.util.module_from_spec(spec)
+        spec.loader.exec_module(T)
+        return ({OP_CT: tuple(T.OFFS_F), OP_GS: tuple(T.OFFS_I), OP_BASEMUL: tuple(T.OFFS_B), OP_SCALE: tuple(T.OFFS_S)},
+                {OP_CT: T.P_F, OP_GS: T.P_I, OP_BASEMUL: T.P_B, OP_SCALE: T.P_S},
+                {OP_CT: T.D_F, OP_GS: T.D_I, OP_BASEMUL: T.D_B, OP_SCALE: T.D_S}, path)
+    return ({OP_CT: (0, 1), OP_GS: (0, 1), OP_BASEMUL: (0, 1, 2, 3), OP_SCALE: (0, 1)},
+            {OP_CT: 3, OP_GS: 3, OP_BASEMUL: 5, OP_SCALE: 3},
+            {OP_CT: 6, OP_GS: 8, OP_BASEMUL: 12, OP_SCALE: 7}, "built-in copy (acff283)")
+
+
+# Which chip's timing (the same switch as model/chip_arith.py): team = tt_um_NTT_Core (default), own = src/.
+import os as _os  # noqa: E402
+CHIP = _os.environ.get("NTT_CHIP", "team").strip() or "team"
+TIMING_SOURCE = "this file (own chip)"
+if CHIP == "team":
+    _o, _p, _l, TIMING_SOURCE = _team_timing()
+    OFFSETS.update(_o)
+    PERIOD.update(_p)
+    LAT.update(_l)
 JOB_UNITS = {op: JOB_INPUTS[op] // len(OFFSETS[op]) for op in OFFSETS}
+
+
+def job_clocks(op):
+    """Chip clocks of one call as the harness runs it: NTT jobs layer by layer (each layer's results come
+    back before the next layer goes in), basemul and scale as one stream. Equals docs/host_timing.md."""
+    per = {OP_CT: 7, OP_GS: 7}.get(op, 1)
+    units = JOB_UNITS[op] // per
+    return per * (units * PERIOD[op] + LAT[op] + 3)
 
 
 # Design B (experimental, not in the team plan): block mode header and timing, serial multiplier.

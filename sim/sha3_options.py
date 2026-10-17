@@ -49,7 +49,7 @@ def per_op():
 
 OPTIONS = [  # key, label, kind
     ("rp2350", "RP2350 alone (software)", "base"),
-    ("ntt_chip", "+ our NTT chip, today (4 tiles)", "ntt"),
+    ("ntt_chip", "+ our NTT chip, optimized firmware (4 tiles)", "ntt"),
     ("reuse", "software: keep A-hat from keygen for decaps", "sw"),
     ("reuse_dual", "software: + hash on both M33 cores", "sw"),
     ("hw_public", "Keccak on chip, public inputs only (~13 tiles)", "hw"),

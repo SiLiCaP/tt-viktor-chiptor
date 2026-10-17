@@ -1,4 +1,4 @@
-# Handoff: ML-KEM NTT coprocessor, Chipathon 2026 (state on Oct 17, 2026)
+# Handoff: ML-KEM NTT coprocessor, Chipathon 2026 (state on Oct 18, 2026)
 
 For whoever picks this up next: a teammate, or Viktor in a new session. It says what exists, what has
 been proven and how, how to rerun everything, and what is still open. Numbers are tagged **measured**,
@@ -16,7 +16,16 @@ The team is taping out an NTT coprocessor for ML-KEM-512 (FIPS 203) on Tiny Tape
 
 The RP2350 firmware that drives the real chip lives in the team repo (`rp2350/`). The chip is
 functionally proven up to gate level on the FPGA. It is not faster than the RP2350's own software, and
-the docs explain why (pins and SHA-3).
+the docs explain why: the pins, SHA-3, and now mainly the firmware's own packing work.
+
+**New on Oct 18:**
+- **Team design:** the team adopted the full-rate schedule and closed timing at 50 MHz (`acff283`).
+- **Pico 2 W + Tang Nano rig:** the same RP2350 drives the chip's gate netlist over 26 wires
+  ([PICO_TANG_RIG.md](PICO_TANG_RIG.md)).
+- **Timing log:** the firmware times every chip batch and call, and `tools/rp_log.py` turns that log into
+  measured costs for the silicon prediction ([ESTIMATES.md](ESTIMATES.md)).
+- **Status:** all of this is coded and checked in simulation. Neither board was connected, so none of it has
+  run on hardware.
 
 ## 2. Two repositories
 
@@ -40,10 +49,15 @@ uses 512.
 | Model | team chip arithmetic (`NTT_CHIP=team`) vs the team's `test/ntt_ref.py` | equal | `test/py/test_team_model.py` |
 | Team RTL | team cocotb suite on `main` (91eb006) | 14/14 pass | `make -C ../chipathon-2026/test` |
 | Own RTL | `src/` cocotb replay of ML-KEM traces | 6/6 pass | `make -C test` (sets `NTT_CHIP=own`) |
-| Team chip, hardened | TT flow (LibreLane), 2×2 | LVS/DRC clean, 0 antenna; timing **fails at the slow corner** (section 7) | `make -C fpga netlist` |
-| FPGA, team **gate netlist** | 3 full ML-KEM-512 exchanges, every output byte checked | PASS (85,927 clocks each) | `make -C fpga prog && python3 host/test_ntt.py --seeds 3` |
-| FPGA, team RTL | same | PASS | `make -C fpga prog GL=0`, same test |
-| FPGA, team gate netlist + RTL | team C harness (`rp2350/`): known answers, Spec 1 demo, fuzz, k = 2 matvec | PASS, clocks equal `host_timing.md` | `../chipathon-2026/rp2350/pc/ntt_host --port /dev/ttyUSB1 all` |
+| Team chip, hardened (`acff283`) | TT flow (LibreLane), 2×2 | LVS/DRC clean, 0 antenna, **50 MHz met at the slow corner** (+1.41 ns) | `make -C fpga netlist` |
+| FPGA, team **gate netlist** (`91eb006`, the previous design) | 3 full ML-KEM-512 exchanges, every output byte checked | PASS (85,927 clocks each) | `make -C fpga prog && python3 host/test_ntt.py --seeds 3` |
+| FPGA, team RTL (`91eb006`) | same | PASS | `make -C fpga prog GL=0`, same test |
+| FPGA, team gate netlist + RTL (`91eb006`) | team C harness (`rp2350/`): known answers, Spec 1 demo, fuzz, k = 2 matvec | PASS, clocks equal `host_timing.md` | `../chipathon-2026/rp2350/pc/ntt_host --port /dev/ttyUSB1 all` |
+| FPGA, `acff283` gate netlist | bitstreams for USB and for the rig build; **not yet run on the board** | built | the same commands |
+| Rig FPGA top (`acff283` RTL) | a polynomial multiply driven through the header pins like the PIO | PASS in cocotb, every byte | `make -C fpga/sim_pico` |
+| Model vs team timing (`acff283`) | Python cycle model reads `../chipathon-2026/test/timing.py`; C harness vs software chip | PASS, clocks 2,751 / 2,765 / 655 / 394 | `pytest test/py`, `make -C ../chipathon-2026/rp2350/pc test` |
+| Timing-log fitter | a synthetic log fits back to its own costs | PASS | `test/py/test_rp_log.py` |
+| **Pico 2 W + Tang Nano rig** | the whole chain over wires | **not run** (boards not connected) | [PICO_TANG_RIG.md](PICO_TANG_RIG.md), "Bring-up" |
 | RP2350 firmware | builds (pico-sdk 2.1.1); CI `rp2350` workflow green, UF2 as artifact | builds | `cmake -S rp2350 -B rp2350/build ...` (see its README) |
 | **RP2350 on a real demo board** | PIO/DMA transport, mux select, USB | **not run** (no board here) | `rp2350/README.md`, "Bring-up on silicon" |
 
@@ -94,10 +108,20 @@ Tools (all in `~/tools`, nothing installed system-wide):
 | `tools/gen_zeta_rom.py` | generator for `src/zeta_rom.v` |
 | `docs/FPGA_DEMO.md` | how to run every demo and test on the FPGA |
 | `docs/ARCHITECTURE_OPTIONS.md` | what 4 and 8 tiles buy |
+| `docs/PICO_TANG_RIG.md` | the Pico 2 W + Tang Nano 20K rig: wiring, safety, bring-up |
+| `docs/ESTIMATES.md` | how the silicon estimate is built, and how the chip differs from the FPGA |
+| `fpga/tangnano20k_pico_top.v`, `fpga/pico_rig_pins.py` | the rig's FPGA top; the one wiring table, which generates `tangnano20k_pico.cst` |
+| `fpga/sim_pico/` | cocotb test of the rig top, driven like the PIO |
+| `tools/rp_log.py` | the RP2350 timing log → measured firmware costs (`perf/rp_coeffs.json`) |
 | `docs/spec-changes/` | proposals to the team: 01 full-rate multiplier schedule, 02 hasher engine with fit check |
 | `ref-docs/` | team specs, original handoffs, the Cortex-M4 paper (ePrint 2022/112) |
 
 ## 6. The Tang Nano rig
+
+Two ways to drive the FPGA:
+- **USB (`TARGET=uart`, the default):** the PC plays the RP2350 over USB.
+- **Pico 2 W rig (`TARGET=pico`):** a Pico 2 W drives the chip's pins over 26 wires
+  ([PICO_TANG_RIG.md](PICO_TANG_RIG.md)). Only the rig gives the RP2350's real timing.
 
 - **What it runs.** `make -C fpga prog` builds `DESIGN=team` with `GL=1` by default. That is the team
   chip's hardened gate netlist, taken from `fpga/build/harden/tt_um_NTT_Core/` and made with
@@ -107,8 +131,8 @@ Tools (all in `~/tools`, nothing installed system-wide):
   - `GL=0`: the team RTL.
   - `DESIGN=own`: `src/`; the host commands then need `NTT_CHIP=own`.
   - `GL_NETLIST=path`: a netlist from the team's GitHub GDS action.
-- **Measured resources (team gate netlist):** 4,395 LUT4 and 737 DFF of 20,736 / 15,552. The chip clock
-  is good for 67 MHz in the FPGA; the rig runs it at 13.5 MHz.
+- **Measured resources (team gate netlist, `acff283`, USB build):** 3,386 LUT4 and 789 DFF of 20,736 / 15,552.
+  The chip clock is good for 70–80 MHz inside the FPGA; the USB player runs it at 13.5 MHz.
 - **The chip clock is on a global buffer (BUFG).** On fabric routing its skew (1.6 ns measured) caused
   hold violations with the gate netlist.
 - **Protocol** (`fpga/PROTOCOL.md`, TTE1): binary over the BL616 USB-UART at **1 Mbaud**. 1.5 and 3 Mbaud
@@ -120,13 +144,13 @@ Tools (all in `~/tools`, nothing installed system-wide):
 
 | Number | Value | Tag, source |
 |---|---|---|
-| Team chip, synthesized (TT flow) | 30,758 µm², 2,959 cells | measured, local harden of 91eb006 |
-| Team chip, placed | 36,379 µm², 50 % of 2×2 | measured |
-| Team chip slack at 50 MHz | +8.8 ns typical (≈ 89 MHz); **−2.3 ns slow corner (44.8 MHz), 1,136 max-slew violations** at ss 100 °C 1.60 V | measured |
+| Team chip, synthesized (TT flow) | 31,799 µm², 3,064 cells | measured, local harden of `acff283` |
+| Team chip, placed | 38,128 µm², 52.5 % of 2×2 | measured |
+| Team chip slack at 50 MHz | +10.5 ns typical (≈ 105 MHz); **+1.41 ns at the slow corner (≈ 53.8 MHz)**, 0 setup violations; 1,242 max-slew warnings at ss 100 °C 1.60 V | measured (matches the team's own figure) |
 | Same chip, plain yosys | 22,903 µm²; × 1.6 placement ratio = 36.6k, which checks out | measured; used in the tile budgets |
-| Clocks per call | NTT 2,751, inverse 2,758, basemul 1,943, scale 780; polynomial-multiply demo 10,983 | `docs/host_timing.md`; equal on FPGA and in the C harness |
-| One NTT on silicon at 50 MHz | 53.9 µs, vs RP2350 software 39.9 µs (pins: 3 bytes per butterfly) | model + cited (ePrint 2022/112) |
-| One ML-KEM-512 exchange | RP2350 alone 8.08 ms; with the chip 9.39 ms (0.86×); with spec change 1, 8.87 ms (0.91×) | estimate from measured clocks + cited cycles |
+| Clocks per call (full rate, `acff283`) | NTT 2,751, inverse 2,765, basemul 655, scale 394; polynomial-multiply demo 9,316 | `docs/host_timing.md`; equal in the Python model and the C harness |
+| One NTT on silicon at 50 MHz | chip 55 µs; with the RP2350's packing as written ~739 µs (estimate); optimized firmware ~75 µs; RP2350 software 39.9 µs | [ESTIMATES.md](ESTIMATES.md) |
+| One ML-KEM-512 exchange | RP2350 alone 8.08 ms; + chip, firmware as written 22.9 ms (0.35×, estimate); optimized 8.88 ms (0.91×), 2 cores 8.57 ms (0.94×) | estimate: exact clocks + cited cycles + estimated firmware costs, until the rig measures them |
 | Hashing share of ML-KEM-512 | 67–76 % (Amdahl ceiling for any NTT unit: 1.08–1.16×) | cited, pqm4 |
 | Software-only speed-up | keep Â + hash on both cores: 5.50 ms, 1.47× | estimate, `sim/sha3_options.py` |
 | Keccak on chip | lane-serial 1,346 clocks/permutation; 151k µm² (flip-flops) / 99k (latches) ≈ 13+ tiles → 1.73× if it fit | measured RTL + synthesis |
@@ -152,17 +176,23 @@ Tools (all in `~/tools`, nothing installed system-wide):
 
 ## 9. Open items, most urgent first
 
-1. **Slow-corner timing of the team chip** (team). At 50 MHz: −2.3 ns at ss 100 °C 1.60 V, 18 setup
-   endpoints, and 1,136 max-slew violations. Options:
-   - accept a lower clock (bring-up at ≤ 40 MHz);
-   - set `CLOCK_PERIOD` to 25 ns;
-   - fix the critical paths.
+1. **Wire up and run the Pico 2 W + Tang Nano rig** ([PICO_TANG_RIG.md](PICO_TANG_RIG.md)):
+   - `make -C fpga prog TARGET=pico`, flash `tt_ntt_pico2w_tang.uf2`, wire the 29 jumpers;
+   - then `selftest`, `sweep`, `all`, and `python3 tools/rp_log.py capture --port /dev/ttyACM0`.
 
-   `info.yaml` also still says `clock_hz: 1000000`.
-2. **RP2350 bring-up** (team, once boards and chips exist). Follow `chipathon-2026/rp2350/README.md`:
-   `select <address>`, `selftest`, `cal`, `sweep`, `all`. The project's mux address comes from the shuttle
-   index. Nothing on the RP2350 side has run on hardware yet.
-3. **Spec change 1 (full-rate basemul and scale)** awaits a team decision: 0.86× → 0.91×, no area.
+   This replaces the estimated firmware costs with measured ones. Run `host/test_ntt.py` on the Tang Nano
+   alone first: the `acff283` gate netlist hasn't run on the board yet.
+2. **The firmware is CPU-bound, about 10×** (Spec 1 owner). Building and unpacking the words costs ~95 µs per
+   NTT layer against 8 µs of chip time, so the system estimate is 0.35× with the firmware as written and
+   0.91× optimized ([ESTIMATES.md](ESTIMATES.md)). Fixes, roughly in order of gain:
+   - precomputed word and index tables;
+   - building the next batch while the current one streams;
+   - unpacking with word loads.
+
+   The rig log will show which part dominates.
+3. **RP2350 bring-up on the demo board** (team, once chips exist): `select <address>`, `selftest`, `cal`,
+   `sweep`, `all`. The mux address comes from the shuttle index. Remaining: the 1,242 max-slew warnings at the
+   slow corner, and `info.yaml` `clock_hz` (still 1 MHz).
 4. **Tile negotiation.** 8 tiles would fit the block engine, making the chip's NTT about 2× faster than
    software (estimate). No Keccak fits in 8.
 5. **Question for the TT organizers:** can a project instantiate an sky130 SRAM macro? It is the only route
@@ -174,11 +204,13 @@ Tools (all in `~/tools`, nothing installed system-wide):
    - deck: https://claude.ai/artifact/9soAp8EUmShXvjRYLANEWz
    - Q&A: https://claude.ai/artifact/RatupDmVDu3qChirmKAGZT
 
-   They predate the gate-level switch. Points now out of date:
+   They predate the gate-level switch and the Oct 18 changes. Points now out of date:
    - The FPGA runs the team chip's gate netlist, not the earlier RTL. The Q&A answer "Is the FPGA running
      the same design you're taping out?" is now "yes, its gates".
-   - The chip area is 30.8k µm² in the TT flow (22.9k plain yosys).
-   - Slow-corner timing fails at 50 MHz.
+   - The chip area is 31.8k µm² synthesized and 38.1k placed in the TT flow (22.9k plain yosys).
+   - Timing now closes at 50 MHz at the slow corner.
+   - Basemul and scale are full rate (655 and 394 clocks).
+   - The system estimate is 0.35× with the firmware as written and 0.91× optimized, not 0.86×.
 
    Update them only when Viktor asks.
 
