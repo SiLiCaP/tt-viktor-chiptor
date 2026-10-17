@@ -1,6 +1,6 @@
 # Tang Nano emulator: host protocol (v1, magic `TTE1`)
 
-Binary over the BL616 USB-UART, 115200 baud 8N1 by default. Multi-byte fields are little-endian.
+Binary over the BL616 USB-UART, 1 Mbaud 8N1 by default (Makefile `BAUD`). Multi-byte fields are little-endian.
 Every command starts with a 1-byte opcode. Every response starts with `A5` and a status byte
 (`00` = OK, `01` = unknown opcode).
 

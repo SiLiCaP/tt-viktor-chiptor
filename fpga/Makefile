@@ -16,7 +16,7 @@ TT_TOP    ?= $(shell awk -F'"' '/^ *top_module:/{print $$2}' $(ROOT)/info.yaml)
 DUT_SRCS  := $(addprefix $(ROOT)/src/,$(SRC_FILES)) $(EXTRA_SRCS)
 WRAP_SRCS := $(FPGA_DIR)uart.v $(FPGA_DIR)tangnano20k_top.v
 
-BAUD   ?= 115200
+BAUD   ?= 1000000    # measured: 1 Mbaud stable; 1.5 and 3 Mbaud lose bytes in long readbacks (BL616)
 DEVICE := GW2AR-LV18QN88C8/I7
 FAMILY := GW2A-18C
 CST    := $(FPGA_DIR)tangnano20k.cst

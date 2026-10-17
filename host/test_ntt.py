@@ -24,7 +24,7 @@ from tt_emu import TTEmu  # noqa: E402
 def main():
     ap = argparse.ArgumentParser()
     ap.add_argument("--port")
-    ap.add_argument("--baud", type=int, default=115200)
+    ap.add_argument("--baud", type=int, default=1000000)
     ap.add_argument("--div", type=int, default=1, help="DUT clock = 13.5 MHz / div")
     ap.add_argument("--files", nargs="+", default=["a", "a_shuffle"])
     ap.add_argument("--mlkem", choices=list(PARAMS), help="replay a full ML-KEM keygen/encaps/decaps trace")

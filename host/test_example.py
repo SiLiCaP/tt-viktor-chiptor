@@ -44,10 +44,10 @@ def run_test(emu, model, n, div, rng):
 def main():
     ap = argparse.ArgumentParser()
     ap.add_argument("--port")
-    ap.add_argument("--baud", type=int, default=115200)
+    ap.add_argument("--baud", type=int, default=1000000)
     ap.add_argument("--vectors", type=int, default=10000)
     ap.add_argument("--divs", default="8,4,2,1", help="run-mode dividers to test (DUT clock = 13.5 MHz / div)")
-    ap.add_argument("--top", default="tt_um_ntt_engine")
+    ap.add_argument("--top", default="tt_um_emu_selftest", help="DUT model; tt_um_ntt_engine is tested with test_ntt.py")
     ap.add_argument("--seed", type=int, default=1)
     a = ap.parse_args()
 

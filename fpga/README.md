@@ -77,6 +77,12 @@ python3 host/test_example.py --top tt_um_emu_selftest
 LED0 is the heartbeat, LED1 means a command is busy, and LED2 means UART bytes arrived recently.
 LED1 looks dim during tests because it flickers once per command.
 
+## UART speed
+
+The default is **1 Mbaud** (`BAUD` in the Makefile, `--baud` on the host scripts), which moves about
+83 kB/s. On our board, 1.5 and 3 Mbaud dropped bytes during long readbacks, a BL616 limit.
+A DUT clock run is not limited by the UART: it plays from the on-chip RAM at up to 13.5 MHz.
+
 ## Pointing it at a new `tt_um` top
 
 Nothing to change: the Makefile reads `top_module` and `source_files` from `info.yaml`.

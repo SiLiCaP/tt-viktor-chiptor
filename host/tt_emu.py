@@ -81,7 +81,7 @@ def pin_word(ui, uio):
 
 # ---------- serial driver ----------
 class TTEmu:
-    def __init__(self, port=None, baud=115200, timeout=2.0):
+    def __init__(self, port=None, baud=1000000, timeout=2.0):
         import serial
         self.port = port or find_port(baud)
         self.base_timeout = timeout
@@ -156,7 +156,7 @@ def candidate_ports():
     return board or [p for p in ports if p.vid is not None]
 
 
-def find_port(baud=115200):
+def find_port(baud=1000000):
     """The board shows up as two interfaces (JTAG + UART); ping each and keep the one that answers."""
     import serial
     tried = []
@@ -178,7 +178,7 @@ def find_port(baud=115200):
 def main():
     ap = argparse.ArgumentParser(description=__doc__, formatter_class=argparse.RawDescriptionHelpFormatter)
     ap.add_argument("--port")
-    ap.add_argument("--baud", type=int, default=115200)
+    ap.add_argument("--baud", type=int, default=1000000)
     ap.add_argument("--list", action="store_true", help="list serial ports")
     ap.add_argument("--ping", action="store_true", help="ping the emulator")
     a = ap.parse_args()
