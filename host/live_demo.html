@@ -169,6 +169,11 @@ details summary { cursor: pointer; color: var(--text-secondary); font-size: 13px
           <th>K<sub>py</sub></th><th>K<sub>chip</sub></th><th>RP2350 alone<br>(predicted)</th><th>RP2350 + chip<br>(predicted)</th><th>vs. alone</th></tr></thead>
         <tbody><tr><td colspan="9" class="muted">run “Exchange keys”</td></tr></tbody></table></div>
       <svg id="perfbars" width="100%" height="150" role="img" aria-label="Predicted time per operation"></svg>
+      <h2 style="margin-top:16px">Only the chip's part (NTT, INTT, basemul, scale), incl. pin transfers</h2>
+      <div class="scroll-x"><table id="chippart">
+        <thead><tr><th>op</th><th>Python (PC)</th><th id="th-run2">FPGA (USB)</th><th>RP2350 software<br>(cited)</th>
+          <th>silicon: pins only</th><th>RP2350 + chip<br>PIO+DMA</th><th>… 2 cores</th></tr></thead>
+        <tbody><tr><td colspan="7" class="muted">run “Exchange keys”</td></tr></tbody></table></div>
       <p class="muted" id="perf-note">RP2350 alone = Python-only × K<sub>py</sub>; RP2350 + chip = host part × K<sub>host</sub> + chip part × K<sub>chip</sub>.</p>
       <details><summary>assumptions and sources</summary><div class="scroll-x"><table id="assump"></table></div></details>
     </div>
@@ -314,6 +319,10 @@ function render(s) {
         <td>${fmt(p.python_s)}</td><td>${p.coef.K_py.toFixed(2)}</td><td>${p.coef.K_chip.toExponential(2)}</td>
         <td>${fmt(p.pred.rp2350_alone_s)}</td><td>${fmt(p.pred.rp2350_plus_chip_s)}</td><td>${sp.toFixed(2)}×</td></tr>`; }).join("");
     drawPerf(P);
+    $("chippart").tBodies[0].innerHTML = ops.map(o => { const c = P[o].chip_part;
+      return `<tr><td>${o}</td><td>${fmt(c.python_pc_s)}</td><td>${fmt(c.fpga_usb_s)}</td><td>${fmt(c.rp2350_sw_s)}</td>
+        <td>${fmt(c.silicon_pins_only_s)}</td><td>${fmt(c.rp2350_chip_pio_dma_s)}</td><td>${fmt(c.rp2350_chip_pio_dma_2core_s)}</td></tr>`; }).join("");
+    $("th-run2").textContent = s.source === "simulation" ? "chip model" : "FPGA (USB)";
     $("perf-note").innerHTML = `Chip clock ${P[ops[0]].f_chip_mhz.toFixed(1)} MHz. RP2350 alone = Python-only × K<sub>py</sub>; ` +
       `RP2350 + chip = host part × K<sub>host</sub> + chip part × K<sub>chip</sub>. The real chip is ≈${(1 / P[ops[0]].coef.K_chip).toFixed(0)}× faster than ` +
       (s.source === "simulation" ? "this Python chip model." : "the FPGA over USB.");

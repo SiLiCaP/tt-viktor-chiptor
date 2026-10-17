@@ -141,6 +141,115 @@ def bench(args):
     print(f"\nchip clock used for the prediction: {f / 1e6:.1f} MHz (limited by: {lim}); log: {LOG}")
 
 
+# ---------------------------------------------------------------- chip part only
+
+
+def _fmt_us(s):
+    return f"{s * 1e6:9.1f} µs" if s < 1e-2 else f"{s * 1e3:8.2f} ms" if s < 1 else f"{s:9.2f} s "
+
+
+def chippart(args):
+    """Only NTT/INTT/basemul/scale: pure Python vs the chip on FPGA vs predicted RP2350 / silicon."""
+    from board import BoardBackend, SimEmu
+    from mlkem import MLKEM768, ReferenceBackend, TimingBackend
+    import perf_model as PM
+
+    rng = random.Random(args.seed)
+    d, z, m = (rng.randbytes(32) for _ in range(3))
+    py = {op: [] for op in OPS}
+    calls = {}
+    for _ in range(args.repeat):
+        tb = TimingBackend(ReferenceBackend())
+        kem = MLKEM768(backend=tb)
+        for op in OPS:
+            tb.seconds = 0.0
+            tb.counts = dict.fromkeys(tb.counts, 0)
+            if op == "keygen":
+                ek, dk = kem.keygen_internal(d, z)
+            elif op == "encaps":
+                K, c = kem.encaps_internal(ek, m)
+            else:
+                kem.decaps(dk, c)
+            py[op].append(tb.seconds)
+            calls[op] = dict(tb.counts)
+    py = {op: statistics.median(v) for op, v in py.items()}
+
+    fpga, label = {}, None
+    if not args.no_board:
+        if args.sim:
+            emu, label = SimEmu(), "chip model (PC)"
+        else:
+            from tt_emu import TTEmu
+            emu, label = TTEmu(args.port, args.baud), "chip on FPGA (PC + Tang Nano, USB)"
+        meas = chip_run(BoardBackend(emu), args.seed)
+        fpga = {op: meas[op]["chip_s"] for op in OPS}
+
+    rows = {op: PM.chip_part(calls[op], py[op], fpga.get(op)) for op in OPS}
+    rows["key exchange"] = {k: (sum(rows[o][k] for o in OPS) if k.endswith("_s") and rows["keygen"][k] is not None
+                                else rows["keygen"][k]) for k in rows["keygen"]}
+    cols = [("python_pc_s", "Python (PC)"), ("fpga_usb_s", label or "-"), ("rp2350_sw_s", "RP2350 software"),
+            ("silicon_pins_only_s", "silicon: pins only"), ("rp2350_chip_cpu_serial_s", "RP2350+chip CPU-serial"),
+            ("rp2350_chip_pio_dma_s", "RP2350+chip PIO+DMA"), ("rp2350_chip_pio_dma_2core_s", "RP2350+chip PIO+DMA 2 cores")]
+    print("\nONLY THE CHIP'S PART (NTT, INTT, basemul, scale) of ML-KEM-768, every time includes moving the data over the pins")
+    print(f"{'':14}" + "".join(f"{h[:22]:>24}" for _, h in cols))
+    for op, r in rows.items():
+        print(f"{op:14}" + "".join(f"{_fmt_us(r[k]) if r[k] is not None else '-':>24}" for k, _ in cols))
+    print(f"\ncalls per op: " + ", ".join(f"{op} {calls[op]}" for op in OPS))
+    print(f"chip clock {rows['keygen']['f_chip_hz'] / 1e6:.0f} MHz (limited by {rows['keygen']['f_chip_limited_by']}); "
+          "RP2350 software = cited Cortex-M4 cycles (ePrint 2022/112) / 150 MHz")
+    print("per call on the TT board (one polynomial):")
+    for op in ("ntt", "invntt", "basemul", "scale"):
+        b = {sc: PM.chip_call_breakdown(op, 1, sc) for sc in PM.SCENARIOS}
+        sw = {"ntt": PM.p("sw_ntt"), "invntt": PM.p("sw_invntt"), "basemul": PM.p("sw_basemul"), "scale": 0}[op] / PM.p("f_rp_hz")
+        print(f"  {op:8} pins {b['pio_dma']['pins_s'] * 1e6:6.1f} µs | CPU-serial {b['cpu_serial']['total_s'] * 1e6:6.1f} | "
+              f"PIO+DMA {b['pio_dma']['total_s'] * 1e6:6.1f} ({b['pio_dma']['bound']}-bound) | "
+              f"2 cores {b['pio_dma_2core']['total_s'] * 1e6:6.1f} ({b['pio_dma_2core']['bound']}-bound) | "
+              f"RP2350 software {sw * 1e6:5.1f} µs")
+
+    for op in OPS:
+        r = rows[op]
+        append({"source": "chippart", "kind": "measured", "backend": "chip part: Python (PC)", "op": op, "wall_s": r["python_pc_s"]})
+        if r["fpga_usb_s"] is not None:
+            append({"source": "chippart", "kind": "measured", "backend": f"chip part: {label}", "op": op, "wall_s": r["fpga_usb_s"]})
+        for k, h in cols[2:]:
+            append({"source": "chippart", "kind": "predicted", "backend": f"chip part: {h}", "op": op, "wall_s": r[k],
+                    "f_chip_hz": r["f_chip_hz"]})
+
+    import matplotlib
+    matplotlib.use("Agg")
+    import matplotlib.pyplot as plt
+    plt.rcParams["font.family"] = "DejaVu Sans"
+    r = rows["key exchange"]
+    bars = [(h, r[k], k) for k, h in cols if r[k] is not None and k != "fpga_usb_s"]
+    fig, ax = plt.subplots(figsize=(16, 6.5), facecolor=SURFACE)
+    names = [b[0] for b in bars]
+    vals = [b[1] * 1e3 for b in bars]
+    colors = [SERIES[2] if b[2] == "python_pc_s" else SERIES[1] if b[2] == "rp2350_sw_s" else SERIES[0] for b in bars]
+    hb = ax.barh(names, vals, height=0.55, color=colors, edgecolor=SURFACE, linewidth=2)
+    for b_, v in zip(hb, vals):
+        ax.text(v + max(vals) * 0.01, b_.get_y() + b_.get_height() / 2, f"{v:.2f} ms", va="center", fontsize=12, color=INK)
+    ax.axvline(r["silicon_pins_only_s"] * 1e3, color=INK2, linestyle=":", linewidth=1.2)
+    ax.invert_yaxis()
+    ax.set_xlim(0, max(vals) * 1.18)
+    ax.grid(axis="x", color=GRID, linewidth=0.8)
+    ax.set_xlabel("ms for the NTT/INTT/basemul/scale part of one ML-KEM-768 key exchange (keygen + encaps + decaps)",
+                  color=INK2, fontsize=12)
+    from matplotlib.patches import Patch
+    ax.legend(handles=[Patch(color=SERIES[2], label="measured: pure Python on the PC"),
+                       Patch(color=SERIES[1], label="predicted: RP2350 software (cited cycles)"),
+                       Patch(color=SERIES[0], label="predicted: our chip on the TT board")],
+              loc="upper right", ncols=1, frameon=False, fontsize=11, labelcolor=INK2)
+    fpga_note = f"; {label} took {r['fpga_usb_s']:.1f} s" if r["fpga_usb_s"] else ""
+    _style(ax, "Only the chip's part: where the time goes",
+           f"dotted line = the pins alone at {r['f_chip_hz'] / 1e6:.0f} MHz (3 clocks per butterfly), the floor for any host{fpga_note}")
+    fig.tight_layout()
+    out = os.path.join(ROOT, "reports", "perf", "03_chip_part_only.png")
+    os.makedirs(os.path.dirname(out), exist_ok=True)
+    fig.savefig(out, dpi=110, facecolor=SURFACE)
+    plt.close(fig)
+    print(f"\nwrote {out}")
+
+
 # ---------------------------------------------------------------- backfill (numbers measured earlier today)
 
 BACKFILL = [
@@ -297,11 +406,18 @@ def main():
     b.add_argument("--baud", type=int, default=1000000)
     b.add_argument("--seed", type=int, default=2026)
     b.add_argument("--repeat", type=int, default=3)
+    c = sub.add_parser("chippart", help="only the chip's part: Python vs FPGA vs predicted RP2350 / silicon")
+    c.add_argument("--sim", action="store_true")
+    c.add_argument("--no-board", action="store_true")
+    c.add_argument("--port")
+    c.add_argument("--baud", type=int, default=1000000)
+    c.add_argument("--seed", type=int, default=2026)
+    c.add_argument("--repeat", type=int, default=5)
     sub.add_parser("plot")
     sub.add_parser("show")
     sub.add_parser("backfill")
     a = ap.parse_args()
-    {"bench": bench, "plot": plot, "show": show, "backfill": backfill}[a.cmd](a)
+    {"bench": bench, "plot": plot, "show": show, "backfill": backfill, "chippart": chippart}[a.cmd](a)
 
 
 if __name__ == "__main__":

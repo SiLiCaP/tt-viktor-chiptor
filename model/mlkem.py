@@ -60,6 +60,28 @@ class CountingBackend:
         return counted
 
 
+class TimingBackend(CountingBackend):
+    """CountingBackend that also adds up the wall time spent inside the backend (the 'chip part')."""
+
+    def __init__(self, inner):
+        super().__init__(inner)
+        self.seconds = 0.0
+
+    def __getattr__(self, op):
+        fn = getattr(self.inner, op)
+        if not callable(fn):
+            return fn
+
+        def timed(*args):
+            import time
+            self.counts[op] += 1
+            t = time.perf_counter()
+            r = fn(*args)
+            self.seconds += time.perf_counter() - t
+            return r
+        return timed
+
+
 # ---------- hashing (section 4.1) ----------
 def H(s):
     return hashlib.sha3_256(s).digest()

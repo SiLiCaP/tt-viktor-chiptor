@@ -37,6 +37,16 @@ PARAMS = {
     "sw_invntt":            (5491, "cited: ePrint 2022/112 Table 2, Kyber iNTT (speed), includes the x128^-1 scale"),
     "sw_basemul":           (1613, "cited: ePrint 2022/112 Table 2, Kyber basemul (asymmetric, as in the inner product)"),
 
+    # RP2350 <-> chip transfer scenarios (CPU cycles per protocol unit: pack the input words, unpack the
+    # 3 result bytes, index math). The pins themselves move one word per chip clock in every scenario.
+    "setup_cycles_per_call": (300, "ASSUMPTION: DMA/PIO setup and job start per chip call"),
+    "cpu_serial_cyc_bf":     (20, "ASSUMPTION (conservative): plain C loop, CPU waits for each layer's transfer"),
+    "pio_dma_cyc_bf":        (12, "ASSUMPTION: ldr/orr/str of 2 words into the PIO TX buffer + ubfx unpack of one "
+                                  "24-bit autopushed result + loop index math, overlapped with DMA streaming"),
+    "pio_dma_cyc_piece":     (14, "ASSUMPTION: basemul piece, 4 words in + 1 result"),
+    "pio_dma_cyc_scale":     (8,  "ASSUMPTION: scale pair, 2 words in + 1 result"),
+    "cores":                 (2,  "cited: the RP2350 has two Cortex-M33 cores (the 2-core scenario splits pack and unpack)"),
+
     # chip clock limits (prediction coefficient inputs)
     "f_chip_target_hz":     (50e6, "cited: src/config.json CLOCK_PERIOD = 20 ns (the TT flow's timing target)"),
     "f_chip_sta_typ_hz":    (1 / (20e-9 - 8.501e-9), "measured: local LibreLane STA, typical corner, 8.5 ns slack at 20 ns -> 87 MHz"),

@@ -29,7 +29,7 @@ sys.path[:0] = [HERE, os.path.join(ROOT, "sim"), os.path.join(ROOT, "model"), os
 
 import perf_model as PM  # noqa: E402
 from board import BoardBackend, MaskedBackend, SimEmu  # noqa: E402
-from mlkem import G, PRF, MLKEM768, sample_poly_cbd  # noqa: E402
+from mlkem import G, PRF, MLKEM768, ReferenceBackend, TimingBackend, sample_poly_cbd  # noqa: E402
 from packet import open_, seal  # noqa: E402
 
 Q = 3329
@@ -69,12 +69,16 @@ class Session:
         wall = time.perf_counter() - t0
         calls, chip_s = dict(self.chip.calls), self.chip.chip_s
         t0 = time.perf_counter()
-        py_fn()
+        py_fn(MLKEM768())
         py_s = time.perf_counter() - t0
+        tb = TimingBackend(ReferenceBackend())
+        py_fn(MLKEM768(backend=tb))
         pr = PM.predict(op, py_s, wall - chip_s, chip_s, calls)
+        cp = PM.chip_part(calls, tb.seconds, chip_s)
         self.state["perf"][op] = {"measured_s": wall, "chip_s": chip_s, "host_s": wall - chip_s, "python_s": py_s,
                                   "calls": calls, "pred": pr["predicted"], "coef": pr["coefficients"],
-                                  "f_chip_mhz": pr["f_chip_hz"] / 1e6, "masked": self.masked}
+                                  "f_chip_mhz": pr["f_chip_hz"] / 1e6, "masked": self.masked,
+                                  "chip_part": {k: v for k, v in cp.items() if k.endswith("_s")}}
         try:
             import perf
             perf.append({"source": "live demo", "kind": "measured", "backend": self.source_label(), "op": op,
@@ -94,7 +98,7 @@ class Session:
         kem = MLKEM768(backend=self.backend())
         d = self.d
         self.ek, self.dk = self._measure("keygen", lambda: kem.keygen_internal(d, z),
-                                         lambda: MLKEM768().keygen_internal(d, z))
+                                         lambda k: k.keygen_internal(d, z))
         self.c = self.K_bob = self.K_alice = None
         self.state["alice"] = {"ek": self.ek.hex(), "ek_len": len(self.ek), "dk_len": len(self.dk), "key": None}
         self.state["bob"] = {}
@@ -109,7 +113,7 @@ class Session:
         kem, m = MLKEM768(backend=self.backend()), random.SystemRandom().randbytes(32)
         ek = self.ek
         self.K_bob, self.c = self._measure("encaps", lambda: kem.encaps_internal(ek, m),
-                                           lambda: MLKEM768().encaps_internal(ek, m))
+                                           lambda k: k.encaps_internal(ek, m))
         self.state["bob"] = {"key": self.K_bob.hex()}
         self.state["wire"]["ct"] = self.c.hex()[:96]
         self.state["wire"]["ct_len"] = len(self.c)
@@ -119,7 +123,7 @@ class Session:
         if not self.c:
             raise ValueError("Bob has not sent a ciphertext yet")
         kem, dk, c = MLKEM768(backend=self.backend()), self.dk, self.c
-        self.K_alice = self._measure("decaps", lambda: kem.decaps(dk, c), lambda: MLKEM768().decaps(dk, c))
+        self.K_alice = self._measure("decaps", lambda: kem.decaps(dk, c), lambda k: k.decaps(dk, c))
         self.state["alice"]["key"] = self.K_alice.hex()
         same = self.K_alice == self.K_bob
         self.log("Alice", "decapsulated: shared key " + ("MATCHES Bob's" if same else "DIFFERS from Bob's"),

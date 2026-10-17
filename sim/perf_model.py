@@ -14,8 +14,10 @@ What goes into the predictions (all in sim/config.py, each marked cited / measur
   RP2350 software:  pqm4 m4fspeed cycles (cited) / f_rp, Cortex-M33 ~ Cortex-M4 (assumption)
   RP2350 host part: pqm4 cycles minus the cited software cost of the offloaded calls (ePrint 2022/112)
   chip calls:       exact protocol clocks per call (from the RTL-matched model) / f_chip, where f_chip is
-                    limited by the timing target, the measured STA and the I/O and PIO limits, plus host
-                    bookkeeping per butterfly / basemul piece (assumption)
+                    limited by the timing target, the measured STA and the I/O and PIO limits, plus the
+                    RP2350's packing/unpacking per unit in one of three transfer scenarios (SCENARIOS):
+                    CPU-serial, PIO+DMA double-buffered, PIO+DMA on both cores. The pins move one word
+                    per chip clock in all of them, so the protocol stream is the floor.
 """
 import os
 import sys
@@ -57,22 +59,66 @@ def rp2350_host_s(ps, op, calls):
     return (cycles - off) * p("m33_vs_m4") / p("f_rp_hz")
 
 
-def chip_calls_s(calls, corner="nominal"):
-    """Time of the chip calls on the TT board: protocol clocks / f_chip + RP2350 bookkeeping per unit."""
+SCENARIOS = {
+    "cpu_serial":    "CPU packs/unpacks, then waits for each transfer (no overlap)",
+    "pio_dma":       "PIO lockstep + DMA, double-buffered: CPU work overlaps the streaming (1 core)",
+    "pio_dma_2core": "as pio_dma, with packing and unpacking split over both M33 cores",
+}
+DEFAULT_SCENARIO = "pio_dma"
+
+
+def _cpu_cycles_per_unit(op, scenario):
+    if scenario == "cpu_serial":
+        return p("cpu_serial_cyc_bf") if op in ("ntt", "invntt") else p("book_per_transaction")
+    c = {"ntt": p("pio_dma_cyc_bf"), "invntt": p("pio_dma_cyc_bf"), "basemul": p("pio_dma_cyc_piece"),
+         "scale": p("pio_dma_cyc_scale")}[op]
+    return c / p("cores") if scenario == "pio_dma_2core" else c
+
+
+def chip_call_breakdown(op, n=1, scenario=DEFAULT_SCENARIO, corner="nominal"):
+    """One kind of chip call on the TT board, n times. Every part includes moving the bits over the pins:
+         pins_s  : the protocol stream itself (inputs in, result bytes out, one word per chip clock)
+         cpu_s   : RP2350 packing/unpacking/index math
+         total_s : what the call costs the system (overlapped or not, + setup)"""
     f, _, _ = f_chip(corner)
-    t = 0.0
-    for op, n in calls.items():
-        book = p("book_per_butterfly") if op in ("ntt", "invntt") else p("book_per_transaction")
-        t += n * (CLOCKS_PER_CALL[op] / f + UNITS_PER_CALL[op] * book / p("f_rp_hz") * (1 - p("book_overlap")))
-    return t
+    pins = CLOCKS_PER_CALL[op] / f
+    cpu = UNITS_PER_CALL[op] * _cpu_cycles_per_unit(op, scenario) / p("f_rp_hz")
+    setup = p("setup_cycles_per_call") / p("f_rp_hz")
+    if scenario == "cpu_serial":
+        total = pins + cpu + setup
+    else:   # double-buffered: the slower of stream and CPU, plus pipeline fill (16 units) and setup
+        total = max(pins, cpu) + 16 * _cpu_cycles_per_unit(op, scenario) / p("f_rp_hz") + setup
+    return {"pins_s": n * pins, "cpu_s": n * cpu, "total_s": n * total, "bound": "pins" if pins >= cpu else "CPU"}
 
 
-def predict(op, py_only_s, fpga_host_s, fpga_chip_s, calls, corner="nominal"):
+def chip_calls_s(calls, corner="nominal", scenario=DEFAULT_SCENARIO):
+    """Time of all chip calls on the TT board, including the pin transfers."""
+    return sum(chip_call_breakdown(op, n, scenario, corner)["total_s"] for op, n in calls.items() if n)
+
+
+def sw_offloaded_s(calls):
+    """What the offloaded calls cost the RP2350 in software (cited, ePrint 2022/112; scale is inside its iNTT)."""
+    cyc = calls.get("ntt", 0) * p("sw_ntt") + calls.get("invntt", 0) * p("sw_invntt") + calls.get("basemul", 0) * p("sw_basemul")
+    return cyc * p("m33_vs_m4") / p("f_rp_hz")
+
+
+def chip_part(calls, py_chip_s=None, fpga_chip_s=None, corner="nominal"):
+    """Only the part the chip does (NTT, INTT, basemul, scale), every way we can run or predict it."""
+    f, lim, _ = f_chip(corner)
+    pins = sum(chip_call_breakdown(op, n, "pio_dma", corner)["pins_s"] for op, n in calls.items() if n)
+    out = {"python_pc_s": py_chip_s, "fpga_usb_s": fpga_chip_s, "rp2350_sw_s": sw_offloaded_s(calls),
+           "silicon_pins_only_s": pins, "f_chip_hz": f, "f_chip_limited_by": lim}
+    for sc in SCENARIOS:
+        out[f"rp2350_chip_{sc}_s"] = chip_calls_s(calls, corner, sc)
+    return out
+
+
+def predict(op, py_only_s, fpga_host_s, fpga_chip_s, calls, corner="nominal", scenario=DEFAULT_SCENARIO):
     """All numbers for one ML-KEM-768 operation. calls: {'ntt': n, 'invntt': n, 'basemul': n, 'scale': n}."""
     ps, o = OPS_768[op]
     t_sw = rp2350_sw_s(ps, o)
     t_host = rp2350_host_s(ps, o, calls)
-    t_chip = chip_calls_s(calls, corner)
+    t_chip = chip_calls_s(calls, corner, scenario)
     return {
         "measured": {"python_only_s": py_only_s, "fpga_host_s": fpga_host_s, "fpga_chip_s": fpga_chip_s,
                      "fpga_total_s": fpga_host_s + fpga_chip_s},
@@ -82,6 +128,7 @@ def predict(op, py_only_s, fpga_host_s, fpga_chip_s, calls, corner="nominal"):
         "predicted": {"rp2350_alone_s": t_sw, "rp2350_host_s": t_host, "chip_calls_s": t_chip,
                       "rp2350_plus_chip_s": t_host + t_chip, "speedup_vs_rp2350": t_sw / (t_host + t_chip)},
         "f_chip_hz": f_chip(corner)[0], "f_chip_limited_by": f_chip(corner)[1], "corner": corner,
+        "scenario": scenario,
     }
 
 
@@ -89,5 +136,6 @@ def assumptions():
     """(name, value, status) for every parameter a prediction uses, for display next to the numbers."""
     keys = ["f_rp_hz", "m33_vs_m4", "pio_cycles_per_chip_clock", "book_per_butterfly", "book_per_transaction",
             "book_overlap", "sw_ntt", "sw_invntt", "sw_basemul", "f_chip_target_hz", "f_chip_sta_typ_hz",
-            "f_chip_sta_slow_hz", "f_io_limit_hz"]
+            "f_chip_sta_slow_hz", "f_io_limit_hz", "setup_cycles_per_call", "cpu_serial_cyc_bf", "pio_dma_cyc_bf",
+            "pio_dma_cyc_piece", "pio_dma_cyc_scale", "cores"]
     return [(k, PARAMS[k][0], PARAMS[k][1]) for k in keys]

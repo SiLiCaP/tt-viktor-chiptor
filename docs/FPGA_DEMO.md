@@ -91,8 +91,46 @@ The coefficients (`sim/perf_model.py`; every input is in `sim/config.py`, marked
   STA (87 MHz typical, 44.8 MHz slow corner), the 50 MHz I/O assumption and the PIO limit.
 
 Predicted RP2350 alone = Python-only × K_py. Predicted RP2350 + chip = host part × K_host + chip part × K_chip.
-**Current result:** RP2350 + chip comes out 0.67–0.78× the speed of the RP2350 alone. Most of
-ML-KEM is hashing (67–75%), which this chip doesn't do. That's the case for option (b), SHA-3 on chip.
+
+### Getting data to the chip: PIO + DMA
+
+The pins move one word per chip clock in every scenario (PIO lockstep). What changes is the RP2350's
+own work per butterfly: building the input words, unpacking the 3 result bytes, and the index math.
+
+| Scenario | Model | Per NTT (50 MHz) |
+|---|---|---|
+| CPU-serial | CPU packs, then waits for each transfer | 175 µs |
+| **PIO + DMA** (default) | double-buffered: CPU work overlaps the stream | 75 µs (CPU-bound) |
+| PIO + DMA, 2 cores | packing and unpacking split over both M33 cores | 56.5 µs (pin-bound) |
+| pins only | the protocol stream alone, the floor for any host | 53.9 µs |
+| RP2350 software (cited) | Cortex-M4 NTT, 5,992 cycles at 150 MHz | 39.9 µs |
+
+The output pins carry 3 bytes per butterfly, so at 50 MHz a single NTT can't go below 54 µs.
+DMA removes the host overhead but not that floor.
+
+### Only the chip's part
+
+```bash
+python3 tools/perf.py chippart     # Python vs FPGA vs RP2350 software vs silicon, NTT/INTT/basemul/scale only
+```
+
+For one ML-KEM-768 key exchange (measured Oct 17), see `reports/perf/03_chip_part_only.png`:
+
+| | time |
+|---|---|
+| pure Python on the PC (measured) | 3.7 ms |
+| chip on the FPGA over USB (measured) | 11.2 s |
+| RP2350 software (cited cycles) | 1.32 ms |
+| silicon, pins only | 2.82 ms |
+| RP2350 + chip, CPU-serial / PIO+DMA / 2 cores | 6.59 / 3.48 / 3.00 ms |
+
+**Current result:** with PIO+DMA the whole operation comes out 0.83–0.90× the speed of the RP2350
+alone. Two things hold it back:
+1. The chip's part is pin-bound at 3 clocks per butterfly, and the M33's software NTT is faster than that.
+2. Most of ML-KEM is hashing (67–75%), which this chip doesn't do.
+
+Ways forward: more work per transferred word (on-chip storage, like the handoff's design B3), and
+SHA-3 on chip (option b).
 
 ## More checks
 
