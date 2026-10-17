@@ -185,8 +185,38 @@ def plot(rows, path):
     plt.close(fig)
 
 
+def clock_sweep():
+    """Chip clock 50 vs 66 MHz (TT pad limit, specs/clock), today's schedule vs the full-rate one,
+    for two RP2350 feeding scenarios. Uses sim/perf_model.py (cited RP2350 host part + chip calls)."""
+    import perf_model as PM
+    from config import PARAMS
+    keep = {k: PARAMS[k] for k in ("f_chip_target_hz", "f_io_limit_hz")}
+    sched = {"today": dict(PM.CLOCKS_PER_CALL),
+             "full-rate (spec change 1)": {**PM.CLOCKS_PER_CALL, "basemul": 650, "scale": 391}}
+    print(f"\nclock sweep, {PS}, one key exchange (keygen + encaps + decaps), transfers included:")
+    print(f"  {'chip clock':10} {'schedule':26} {'PIO+DMA 1 core':>16} {'PIO+DMA 2 cores':>16}   (RP2350 alone "
+          f"{sum(rp_split(op)[0] for op in CALLS) * 1e3:.2f} ms)")
+    base = sum(rp_split(op)[0] for op in CALLS)
+    rows = []
+    for f in (50e6, 66e6):
+        PARAMS["f_chip_target_hz"] = (f, "sweep")
+        PARAMS["f_io_limit_hz"] = (f, "sweep")
+        for name, clk in sched.items():
+            PM.CLOCKS_PER_CALL.update(clk)
+            res = []
+            for sc in ("pio_dma", "pio_dma_2core"):
+                t = sum(PM.rp2350_host_s(PS, op, CALLS[op]) + PM.chip_calls_s(CALLS[op], scenario=sc) for op in CALLS)
+                res.append(t)
+            rows.append((f, name, res))
+            print(f"  {f / 1e6:6.0f} MHz {name:26} " + " ".join(f"{t * 1e3:7.2f} ms {base / t:5.2f}x" for t in res))
+    PM.CLOCKS_PER_CALL.update(sched["today"])
+    PARAMS.update(keep)
+    return rows
+
+
 if __name__ == "__main__":
     out = os.path.join(os.path.dirname(HERE), "reports", "perf",
                        "05_architecture_options.png" if PS == "ML-KEM-512" else f"05_architecture_options_{PS[-3:]}.png")
     plot(main(), out)
     print(f"\nwrote {out}")
+    clock_sweep()
