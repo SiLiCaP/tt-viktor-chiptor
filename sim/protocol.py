@@ -22,6 +22,21 @@ OFFSETS = {OP_CT: (0, 1), OP_GS: (0, 1), OP_BASEMUL: (0, 1, 2, 3), OP_SCALE: (0,
 PERIOD = {OP_CT: 3, OP_GS: 3, OP_BASEMUL: 15, OP_SCALE: 6}     # unit start -> earliest next unit start
 LAT = {OP_CT: 6, OP_GS: 7, OP_BASEMUL: 20, OP_SCALE: 9}        # D: unit's first input -> first result byte
 JOB_INPUTS = {OP_CT: 1792, OP_GS: 1792, OP_BASEMUL: 512, OP_SCALE: 256}
+
+# Proposed: Control uses the full-rate multiplier (team Spec 2, L_MUL = 3, one start per clock).
+# NTT/INTT stay at 3 clocks per butterfly (3 result bytes on 8 pins); basemul becomes multiplier-bound
+# (5 products per piece), scale becomes pin-bound (3 bytes per pair). docs/spec-changes/01_full_rate_multiplier.md
+FULL_RATE = {
+    "OFFSETS": {OP_CT: (0, 1), OP_GS: (0, 1), OP_BASEMUL: (0, 1, 2, 3), OP_SCALE: (0, 1)},
+    "PERIOD": {OP_CT: 3, OP_GS: 3, OP_BASEMUL: 5, OP_SCALE: 3},
+    "LAT": {OP_CT: 6, OP_GS: 7, OP_BASEMUL: 12, OP_SCALE: 7},
+}
+
+
+def use_full_rate():
+    """Switch every importer of OFFSETS / PERIOD / LAT to the proposed full-rate schedule (in place)."""
+    for name, table in FULL_RATE.items():
+        globals()[name].update(table)
 JOB_UNITS = {op: JOB_INPUTS[op] // len(OFFSETS[op]) for op in OFFSETS}
 
 

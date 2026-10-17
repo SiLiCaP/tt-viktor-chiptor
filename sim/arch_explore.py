@@ -14,8 +14,9 @@ Sources of the inputs:
       ML-KEM-512 ~26-27 Keccak-f[1600] permutations, ~1.1-1.2 kB absorbed, ~2.7 kB squeezed
       ML-KEM-768 ~43-44 permutations, ~1.7-1.8 kB absorbed, ~5.1-5.2 kB squeezed
       (decaps without the optional dk check, which pqm4 does not do either)
-  areas: our RTL synthesized for sky130 (measured), Keccak-f 1 round/clock and a parallel K-RED multiplier
-      synthesized for this exploration (measured, sim/arch_explore_rtl/), the smaller Keccak variants ESTIMATED
+  areas: our RTL and the team's tt_um_NTT_Core synthesized for sky130 (measured); Keccak-f 1 round/clock, a
+      verified lane-serial Keccak-f (1,346 clocks) and a parallel K-RED multiplier synthesized for this
+      exploration (measured, sim/arch_explore_rtl/); the clock-gated variant is an ESTIMATE
   tile budget: our 2x2 harden needed 1.6x the synthesized area once placed (measured); max ~70 % density
 """
 import os
@@ -52,13 +53,16 @@ AREA = {
     "ntt_A_par": (20042 - 7221 + 7022 + 600, "measured multiplier swap (+~600 control, ESTIMATE)"),
     "ntt_B3_par": (20042 + 16300, "ESTIMATE: handoff's block-engine extras (buffer + address gen + FSM)"),
     "keccak_round": (145288, "measured: Keccak-f[1600] 1 round/clock, synthesized"),
-    "keccak_plane": (70000, "ESTIMATE: 320-bit (5-lane) datapath + 1600-bit state"),
-    "keccak_lane": (50000, "ESTIMATE: 64-bit lane-serial datapath + 1600-bit state"),
+    "keccak_lane": (151452, "measured: sim/arch_explore_rtl/keccak_lane.v, verified, synthesized "
+                            "(the 1,600 write-enabled state bits + 25:1 lane read mux dominate)"),
+    "keccak_lane_cg": (110000, "ESTIMATE: keccak_lane with clock-gated registers instead of enable flip-flops"),
+    "team_chip": (22903, "measured: chipathon-2026 tt_um_NTT_Core, synthesized"),
 }
-KECCAK_CLK = {"keccak_round": 24, "keccak_plane": 250, "keccak_lane": 1500}     # clocks/permutation (ESTIMATE but round)
+KECCAK_CLK = {"keccak_round": 24, "keccak_lane": 1346, "keccak_lane_cg": 1346}  # clocks/permutation (measured in RTL sim)
 
 # NTT-engine time per call on the TT board, PIO+DMA (from sim/perf_model.py for A; others ESTIMATE)
 NTT_CALL_US = {
+    "team_chip": {"ntt": 75.0, "invntt": 75.0, "basemul": 42.1, "scale": 18.3},      # same protocol as ntt_A
     "ntt_A": {"ntt": 75.0, "invntt": 75.0, "basemul": 42.1, "scale": 18.3},          # model, CPU-bound feeding
     "ntt_A_par": {"ntt": 75.0, "invntt": 75.0, "basemul": 14.0, "scale": 9.0},       # basemul 5 clk/piece
     "ntt_B3_par": {"ntt": 25.0, "invntt": 25.0, "basemul": 14.0, "scale": 9.0},      # ~950 clk + gather/scatter
@@ -92,9 +96,9 @@ OPTIONS = [
     ("today: NTT engine A", "ntt_A", None),
     ("A + parallel multiplier (same area)", "ntt_A_par", None),
     ("NTT block engine B3 + parallel mult.", "ntt_B3_par", None),
-    ("Keccak lane-serial (SW arithmetic)", None, "keccak_lane"),
-    ("Keccak lane-serial + NTT A-par", "ntt_A_par", "keccak_lane"),
-    ("Keccak plane-serial (SW arithmetic)", None, "keccak_plane"),
+    ("Keccak lane-serial (measured RTL)", None, "keccak_lane"),
+    ("Keccak lane-serial, clock-gated (est.)", None, "keccak_lane_cg"),
+    ("Keccak lane-serial + team NTT chip", "team_chip", "keccak_lane"),
     ("Keccak 1 round/clock (SW arithmetic)", None, "keccak_round"),
     ("Keccak 1 round/clock + NTT B3", "ntt_B3_par", "keccak_round"),
 ]

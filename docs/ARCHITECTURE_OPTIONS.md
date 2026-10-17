@@ -1,10 +1,14 @@
 # What can our chip do for ML-KEM-512 with 4, 6 or 8 tiles?
 
 This note is for deciding what to build and how many tiles to ask for. Our target is **ML-KEM-512**;
-`python sim/arch_explore.py ML-KEM-768` gives the same tables for 768 (the speedups come out within 0.03×).
-Every number comes from `python sim/arch_explore.py`. Each one is **measured** (our RTL, synthesis, the FPGA), **cited**
-(pqm4, ePrint 2022/112) or an **estimate**. Times are for the Tiny Tapeout demo board: RP2350 at
-150 MHz, chip at 50 MHz, with every bit moved over the pins.
+`python sim/arch_explore.py ML-KEM-768` gives the same tables for 768. Every number comes from
+`python sim/arch_explore.py`. Each one is **measured** (RTL, synthesis, the FPGA), **cited** (pqm4,
+ePrint 2022/112) or an **estimate**. Times are for the Tiny Tapeout demo board: RP2350 at 150 MHz,
+chip at 50 MHz, with every bit moved over the pins.
+
+**Correction (Oct 17).** An earlier version of this note claimed a lane-serial Keccak (~50k µm²) would fit
+in 4×2 for 1.64×. Built, verified and synthesized, the core is **151k µm²**. No hashing engine fits in
+8 tiles. The detailed fit check is in `docs/spec-changes/02_hasher_engine.md`.
 
 ## 1. Where ML-KEM-512 spends its time on the RP2350 alone
 
@@ -14,82 +18,66 @@ Every number comes from `python sim/arch_explore.py`. Each one is **measured** (
 | encaps | 2.61 ms | 1.92 ms (73 %) | 0.25 ms (10 %) | 0.44 ms (17 %) |
 | decaps | 2.85 ms | 1.92 ms (67 %) | 0.39 ms (14 %) | 0.55 ms (19 %) |
 
-These sources are cited: pqm4 m4fspeed cycles and its hashing share, and ePrint 2022/112 for the NTT
-and basemul cycles. That gives hard ceilings, by Amdahl's law:
+The ceilings, by Amdahl's law:
+- an infinitely fast NTT unit gives at most **1.08–1.16×**;
+- an infinitely fast Keccak unit gives at most **3.0–4.1×**;
+- both together give at most **5.2–6.0×**.
 
-- An **infinitely fast NTT unit** gives at most **1.08–1.16×**.
-- An **infinitely fast Keccak unit** gives at most **3.0–4.1×**.
-- **Both together** give at most **5.2–6.0×**.
+Each operation runs 26–27 Keccak-f[1600] permutations, about 74 µs each on the RP2350.
 
-Each operation runs about **26–27 Keccak-f[1600] permutations** (768: about 44). 12 of them generate the
-2×2 matrix Â. On the RP2350 a permutation costs about 11,000 cycles, or 74 µs. These counts come from
-instrumenting `model/mlkem.py`.
-
-## 2. What the blocks cost in area
+## 2. Block areas
 
 | Block | Synthesized area (sky130) | Source |
 |---|---|---|
-| our NTT coprocessor (design A) | 20,000 µm² | measured |
-| parallel 12×12 K-RED multiplier (1 product / clock) | 7,000 µm² | measured, **same size as our serial one** (7,200) |
-| Keccak-f[1600], 1 round per clock | 145,000 µm² | measured (32k state + ~110k round logic) |
-| Keccak, 320-bit plane-serial datapath | ~70,000 µm² | estimate |
-| Keccak, 64-bit lane-serial datapath | ~50,000 µm² | estimate |
-| one polynomial stored on chip (256 × 12 bit) | ~60,000–80,000 µm² | estimate (flip-flops or latches + read mux) |
-| ML-KEM-512 decapsulation key on chip (1,632 B) | > 190,000 µm² | estimate |
+| team chip `tt_um_NTT_Core` | 22,903 µm² | measured |
+| our NTT coprocessor | 20,042 µm² | measured |
+| full-rate K-RED multiplier (team, 3 rounds) | 8,785 µm² | measured |
+| Keccak-f[1600], lane-serial, 1,346 clocks / permutation | **151,452 µm²** | measured, RTL verified |
+| Keccak-f[1600], 1 round / clock, 24 clocks | 145,288 µm² | measured |
+| lane-serial with clock-gated registers | ~110,000 µm² | estimate |
+| one polynomial stored on chip | ~60,000–80,000 µm² | estimate |
 
-Budget for synthesized logic: our 2×2 harden needed 1.6× the synthesized area once placed (measured),
-and placement tops out around 70 % density. That gives about **32k µm² for 2×2, 48k for 3×2 and 63k for
-4×2** (estimate).
+Budget for synthesized logic: about 32k µm² for 2×2, 48k for 3×2 and 63k for 4×2. That's an estimate:
+our 2×2 harden needed 1.6× the synthesized area once placed, at up to ~70 % density.
+
+The Keccak state is what makes it expensive: 1,600 bits that each need a write enable, plus a lane read
+mux. That's about 92k µm² of flip-flops before any logic. Doing it serially doesn't save area; the
+1-round-per-clock core is even slightly smaller.
 
 ## 3. Options
 
 | Design | Area | Fits | One key exchange | vs. RP2350 alone |
 |---|---|---|---|---|
 | RP2350 alone | – | – | 8.08 ms | 1.00× |
-| today: NTT engine A | 20k | 2×2 | 9.38 ms | 0.86× |
-| A + parallel multiplier | 20k | 2×2 | 8.82 ms | 0.92× |
-| NTT block engine (B3) + parallel multiplier | 36k | 3×2 | 7.97 ms | 1.01× |
-| **Keccak lane-serial, arithmetic stays on the RP2350** | ~50k | **4×2** | **4.91 ms** | **1.64×** |
-| Keccak lane-serial + NTT A | ~70k | no (9 tiles) | 5.65 ms | 1.43× |
-| Keccak plane-serial | ~70k | no (9 tiles, borderline) | 2.94 ms | 2.75× |
+| today's NTT chip | 20–23k | 2×2 | 9.38 ms | 0.86× |
+| **+ full-rate multiplier schedule** (`spec-changes/01`) | same | 2×2 | 8.82 ms | **0.92×** |
+| NTT block engine (B3) | 36k (estimate) | 3×2 | 7.97 ms | 1.01× |
+| Keccak lane-serial (measured) | 151k | no (19 tiles) | 4.67 ms | 1.73× |
+| Keccak lane-serial + NTT chip | 174k | no (22 tiles) | 5.98 ms | 1.35× |
 | Keccak 1 round / clock | 145k | no (18 tiles) | 2.58 ms | 3.13× |
 
 Chart: `reports/perf/05_architecture_options.png`.
 
-## 4. What this means
+## 4. What this means for the tile request
 
-1. **"Load the key, run everything on chip, read it out" does not fit, not even in 8 tiles.**
-   ML-KEM needs several 256-coefficient polynomials at once, and a single one costs more area than
-   8 tiles of logic. Keys and polynomials have to stay in the RP2350's 520 KB of SRAM.
-   If area were unlimited (about 40 tiles for ML-KEM-512), the chip could run a whole operation in a few
-   thousand clocks, about 0.1 ms. That's roughly 25× faster than the RP2350, but it isn't available on a
-   Tiny Tapeout shuttle.
-2. **Bigger math blocks don't buy much on their own.**
-   - The parallel multiplier is free in area, and it makes basemul 3× faster.
-   - The NTT is still limited by the pins: 3 result bytes per butterfly.
-   - Keeping 16 coefficients on chip (design B3) gets the NTT below the RP2350's software time, but
-     the arithmetic is only 8–12 % of ML-KEM, so the whole operation barely moves.
-3. **Hashing is where the time is.**
-   - A Keccak unit is the only accelerator that can make ML-KEM clearly faster.
-   - A compact lane-serial Keccak (~50k µm²) fits in **4×2**: about **1.64×** for the whole key
-     exchange.
-   - A plane-serial one would reach about **2.75×**, but needs a little more than 8 tiles by this
-     estimate. With careful design (latch-based state, a shared datapath) it may just fit.
-4. **One Tiny Tapeout chip runs only one project at a time** (the mux selects one design). Two separate
-   2×2 projects, one NTT and one Keccak, could not work together on a key exchange. It has to be **one
-   4×2 project**.
-5. Clocking faster doesn't help much: the chip runs from the board's clock (assumed limit about 50 MHz),
-   and a 1-round-per-clock Keccak would likely not even close timing at 50 MHz.
+1. **No hashing engine fits in 8 tiles**, and hashing is where the time is. A real speedup over the RP2350
+   needs at least ~14–19 tiles. Tiny Tapeout's largest project is 8×2 = 16 tiles.
+2. **"Keys and polynomials on chip" doesn't fit either.** One polynomial costs more than 8 tiles.
+3. Within 2×2–3×2 the chip sits near the RP2350's software speed: 0.92× with the full-rate schedule,
+   about 1.0× with a 16-coefficient block engine in 3×2. The pins (3 result bytes per butterfly) and
+   Amdahl's law (arithmetic is about 10 % of ML-KEM) cap it.
+4. So the case for the chip is **not raw speed with ≤ 8 tiles**. It's what it demonstrates:
+   - a verified ML-KEM arithmetic coprocessor;
+   - constant-time operation;
+   - side-channel exposure at the pins and the masking that fixes it (live demo);
+   - the measured path from RTL through FPGA to silicon.
+5. A single Tiny Tapeout chip runs one project at a time, so cooperating engines must be one project.
 
-## 5. Suggested plan if we get 8 tiles (4×2)
+## 5. Recommendation
 
-- **Phase 1 (done):** NTT engine A, verified on RTL, gate level and FPGA. It stays useful as the
-  arithmetic demo, and as the masking and side-channel story.
-- **Phase 2:** a lane-serial Keccak-f[1600] with SHAKE/SHA-3 padding and rate control, on the same
-  12-bit-in / 8-bit-out pin protocol. Synthesize it early, because the 50k µm² figure is an estimate.
-- **Phase 3, if it fits:** on-chip SampleNTT (rejection sampling). The RP2350 then gets Â coefficients
-  directly instead of SHAKE bytes, which cuts 27 permutations' worth of output parsing on the CPU.
-- Swap in the parallel multiplier now: it costs no area and makes basemul 3× faster.
-
-If only 6 tiles (3×2) are available: the lane-serial Keccak alone is over budget by the estimate.
-That makes the B3 block engine the most useful 3×2 design, at about 1.0×.
+- **2×2:** adopt the full-rate schedule (`docs/spec-changes/01_full_rate_multiplier.md`). It costs no
+  area and makes basemul 3× and scale 2× faster.
+- **More tiles:** only worth it with a goal other than beating the RP2350. A 3×2 block engine reaches
+  about 1.0×; it doesn't fit in 2×2.
+- **Hashing on chip:** spec and verified core are ready (`docs/spec-changes/02_hasher_engine.md`,
+  `sim/arch_explore_rtl/keccak_lane.v`) for a future shuttle with ≥ 16 tiles or denser storage.
