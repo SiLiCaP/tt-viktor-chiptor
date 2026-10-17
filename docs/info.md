@@ -9,12 +9,25 @@ You can also include images in this folder and reference them in the markdown. E
 
 ## How it works
 
-Explain how your project works
+This is a coprocessor for the polynomial arithmetic in ML-KEM (FIPS 203, the NIST post-quantum key
+encapsulation standard). The host (the RP2350 on the demo board) runs ML-KEM itself and offloads the
+number-theoretic transform (NTT), the inverse NTT, base multiplication and scaling, all modulo
+q = 3329. The 128 twiddle factors are in an on-chip ROM.
+
+The host streams 12-bit coefficients in on `ui_in` and `uio_in[3:0]`, with `valid`, `sof` (start of
+frame) and a 2-bit `op` on `uio_in[7:4]`. Results come back on `uo_out` as ML-KEM ByteEncode12 bytes.
+There is no handshake: every result appears at a fixed, data-independent clock offset, so the chip
+runs in constant time. The exact frame formats and latencies are in
+[docs/PROTOCOL.md](PROTOCOL.md).
+
+*Work in progress: the current silicon logic is still the template's example.*
 
 ## How to test
 
-Explain how to use your project
+Drive the pins in lockstep from the RP2350 (PIO) using the protocol in `docs/PROTOCOL.md`. The
+`sim/` directory has a cycle-accurate Python model and a host driver, and `test/stimulus/` has
+per-clock input and expected-output files you can replay.
 
 ## External hardware
 
-List external hardware used in your project (e.g. PMOD, LED display, etc), if any
+None. Everything runs from the Tiny Tapeout demo board's RP2350.
