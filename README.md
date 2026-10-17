@@ -1,42 +1,29 @@
 ![](../../workflows/gds/badge.svg) ![](../../workflows/docs/badge.svg) ![](../../workflows/test/badge.svg) ![](../../workflows/fpga/badge.svg)
 
-# Tiny Tapeout Verilog Project Template
+# tt-viktor-chiptor: ML-KEM NTT coprocessor workbench
 
-- [Read the documentation for project](docs/info.md)
+Viktor's exploration and verification workbench for the Chipathon 2026 team chip: an NTT coprocessor for
+post-quantum ML-KEM-512 (FIPS 203) on Tiny Tapeout, 2×2 tiles. The tapeout design (`tt_um_NTT_Core`) and the
+RP2350 firmware live in the team repo [chipathon-2026](https://github.com/SiLiCaP/chipathon-2026). This
+repo holds what proves and demonstrates them:
 
-## What is Tiny Tapeout?
+- **Models:** a FIPS 203 golden model, and a cycle-exact model of the chip's pins (`model/`, `sim/`).
+- **Tang Nano 20K rig** (`fpga/`): runs the team chip's **hardened sky130 gate netlist**. Full ML-KEM-512
+  exchanges match the model byte for byte.
+- **Demo website** (`host/showcase.py`): the rig, polynomial multiplication, key exchange, encrypted
+  messages, attacks, performance, and the final RP2350 + chip system.
+- **Performance and architecture studies:** `sim/perf_model.py`, `sim/arch_explore.py`,
+  `sim/sha3_options.py`, `docs/ARCHITECTURE_OPTIONS.md`, `docs/spec-changes/`.
+- **An earlier chip version** (`src/`, `tt_um_ntt_engine`), with its tests.
 
-Tiny Tapeout is an educational project that aims to make it easier and cheaper than ever to get your digital and analog designs manufactured on a real chip.
+**Start here: [docs/HANDOFF.md](docs/HANDOFF.md)** covers what is proven, how to rerun it, the key numbers
+and the open items. To run the demos: [docs/FPGA_DEMO.md](docs/FPGA_DEMO.md).
 
-To learn more and get started, visit https://tinytapeout.com.
+```bash
+source ~/tools/oss-cad-suite/environment
+make -C fpga prog                     # team chip (gate netlist) onto the Tang Nano
+python3 host/test_ntt.py --seeds 3    # ML-KEM-512 on the FPGA, every byte checked
+python3 host/showcase.py              # http://localhost:8080   (--sim: no board needed)
+```
 
-## Set up your Verilog project
-
-1. Add your Verilog files to the `src` folder.
-2. Edit the [info.yaml](info.yaml) and update information about your project, paying special attention to the `source_files` and `top_module` properties. If you are upgrading an existing Tiny Tapeout project, check out our [online info.yaml migration tool](https://tinytapeout.github.io/tt-yaml-upgrade-tool/).
-3. Edit [docs/info.md](docs/info.md) and add a description of your project.
-4. Adapt the testbench to your design. See [test/README.md](test/README.md) for more information.
-
-The GitHub action will automatically build the ASIC files using [LibreLane](https://www.zerotoasiccourse.com/terminology/librelane/).
-
-## Enable GitHub actions to build the results page
-
-- [Enabling GitHub Pages](https://tinytapeout.com/faq/#my-github-action-is-failing-on-the-pages-part)
-
-## Resources
-
-- [FAQ](https://tinytapeout.com/faq/)
-- [Digital design lessons](https://tinytapeout.com/digital_design/)
-- [Learn how semiconductors work](https://tinytapeout.com/siliwiz/)
-- [Join the community](https://tinytapeout.com/discord)
-- [Build your design locally](https://www.tinytapeout.com/guides/local-hardening/)
-
-## What next?
-
-- [Submit your design to the next shuttle](https://app.tinytapeout.com/).
-- Edit [this README](README.md) and explain your design, how it works, and how to test it.
-- Share your project on your social network of choice:
-  - LinkedIn [#tinytapeout](https://www.linkedin.com/search/results/content/?keywords=%23tinytapeout) [@TinyTapeout](https://www.linkedin.com/company/100708654/)
-  - Mastodon [#tinytapeout](https://chaos.social/tags/tinytapeout) [@matthewvenn](https://chaos.social/@matthewvenn)
-  - X (formerly Twitter) [#tinytapeout](https://twitter.com/hashtag/tinytapeout) [@tinytapeout](https://twitter.com/tinytapeout)
-  - Bluesky [@tinytapeout.com](https://bsky.app/profile/tinytapeout.com)
+This repo is based on the Tiny Tapeout Verilog template. See https://tinytapeout.com for the TT docs.
