@@ -741,7 +741,8 @@ def main():
         port = a.port or ("/dev/ttyACM0" if os.path.exists("/dev/ttyACM0") else None)
         emu = TTEmu(port)
         emu.ping()
-        emu.set_inputs(0, 0)
+        emu.set_div(1)                    # 13.5 MHz chip clock (the firmware starts at 1 MHz); the rig's wires
+        emu.set_inputs(0, 0)              # pass all 42 hash jobs at 13.5 MHz (docs/PICO_TANG_RIG.md)
         emu.reset(10)
         mode = "pico" if "ACM" in emu.port else "tang"
         probe = HashJob("sha3_256", b"abc", 8, burst=True)

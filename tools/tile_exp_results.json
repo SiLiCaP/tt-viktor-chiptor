@@ -8,6 +8,14 @@
    "tiles": "3x2",
    "top": "own"
   },
+  "fits": false,
+  "harden_rc": "stopped",
+  "metrics": {
+   "design__instance__utilization@cts": 0.692,
+   "last_step": "44-openroad-detailedrouting",
+   "synth_area": 60750.8
+  },
+  "note": "does not route: after 1 h 40 min of the harden, detailed routing was still at 32,578 violations (37,325 -> 35,356 -> 32,578); stopped",
   "started": "2026-10-18 11:58",
   "tests": {
    "failed": [],
