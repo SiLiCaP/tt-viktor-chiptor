@@ -152,6 +152,38 @@ BOOTSEL while plugging the Pico in and copy the UF2 onto the drive that appears,
 `~/tools/pico-tools/picotool/picotool load -x tt_ntt_pico2w_tang.uf2 -f`. The Pico then shows up as
 `/dev/ttyACM0`.
 
+## Wiring check (before running the chip)
+
+`fpga/rig_pinchk.v` is a stand-in "chip" with the same pin directions. On each clock it latches one input byte,
+alternating `ui_in` and `uio`, onto `uo_out`. The check drives it through the Pico's firmware (TTE1 over USB)
+with walking ones and zeros, and names any open, shorted or swapped wire by its jumper:
+
+```bash
+sudo cp fpga/70-raspberrypi-pico.rules /etc/udev/rules.d/ && sudo udevadm control --reload && sudo udevadm trigger   # once
+make -C fpga prog TARGET=pico GL=0 TT_TOP=tt_um_rig_pinchk EXTRA_SRCS=$PWD/fpga/rig_pinchk.v
+python3 tools/rig_pincheck.py --port /dev/ttyACM0 --mhz 1 5 13.5
+```
+
+Expect `all 26 wires OK` at every clock, then PASS. A line like
+`BAD uio[5] Pico GP26 (pin 31) <-> Tang R5 (FPGA pin 42)` names the jumper to fix.
+Measured on Oct 18, 2026: all 26 wires OK at 0.96, 4.5 and 13.5 MHz.
+
+## The hash-only chip on the rig (chipathon-2026 branch `sha3-only`)
+
+The NTT-free chip (Keccak K = 8 + burst squeeze + SamplePolyCBD, `docs/TILE_ROUTES.md` section 7). Its ring
+core is built with enable flops instead of clock gates (`CLOCK_GATING 0`), which the core test shows equivalent:
+
+```bash
+git -C ../chipathon-2026 worktree add ~/tools/work/br/sha3-only sha3-only        # once
+make -C fpga prog TARGET=pico GL=0 DESIGN_ROOT=~/tools/work/br/sha3-only BUILD_TAG=_hashonly_k8 \
+     CHPARAM='chparam -set CLOCK_GATING 0 keccak_ring;'
+python3 host/test_variant.py --port /dev/ttyACM0 --hash 8 --hash-only
+```
+
+It runs 42 jobs: 24 byte-squeeze (every algorithm at the rate edges), 12 bursts, and 6 ML-KEM PRF calls
+through Burst CBD (η = 2 and 3). Each is checked against hashlib or FIPS 203 SamplePolyCBD, and `uo_out`
+must stay 0 on every clock where no byte is due. Result: **42/42 bit-exact at 1.04, 3.38, 6.75 and 13.5 MHz**, the top of the rig's clock range, and `uo_out` is 0 on every clock where no byte is due. All 48,676 clocks take 1.9 s through the TTE1 bridge.
+
 ## Bring-up
 
 Open the console with `python3 -m serial.tools.miniterm /dev/ttyACM0` and type:

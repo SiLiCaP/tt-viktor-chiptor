@@ -20,7 +20,12 @@ FPGA_DIR := $(dir $(abspath $(lastword $(MAKEFILE_LIST))))
 ROOT     := $(abspath $(FPGA_DIR)/..)
 TEAM     := $(abspath $(ROOT)/../chipathon-2026)
 DESIGN   ?= team
-DESIGN_ROOT := $(if $(filter team,$(DESIGN)),$(TEAM),$(ROOT))
+DESIGN_ROOT ?= $(if $(filter team,$(DESIGN)),$(TEAM),$(ROOT))
+# DESIGN_ROOT=<folder>: any design tree with info.yaml + src/, e.g. a tools/tile_exp.py variant
+#   make -C fpga prog TARGET=pico GL=0 DESIGN_ROOT=~/tools/work/exp/sha_k8_2x2 BUILD_TAG=_sha_k8 \
+#        CHPARAM='chparam -set CLOCK_GATING 0 keccak_ring;'      (the ring core's clock gates as enables)
+BUILD_TAG ?=
+CHPARAM ?=
 
 # DUT sources and top come from the design's info.yaml, so the FPGA build follows the ASIC build.
 SRC_FILES := $(shell awk '/^ *source_files:/{f=1;next} f&&/^ *- /{sub(/^ *- */,"");sub(/ *#.*/,"");gsub(/"/,"");print;next} f&&!/^ *#/{f=0}' $(DESIGN_ROOT)/info.yaml)
@@ -33,11 +38,11 @@ TARGET    ?= uart
 ifeq ($(GL),1)
 DUT_SRCS  := $(GL_NETLIST) $(FPGA_DIR)sky130_phys_cells.v $(EXTRA_SRCS)
 READ_CELLS := read_liberty -ignore_miss_func $(SKY130_LIB);
-BUILD     := $(FPGA_DIR)build/$(TT_TOP)_gl
+BUILD     := $(FPGA_DIR)build/$(TT_TOP)$(BUILD_TAG)_gl
 else
 DUT_SRCS  := $(addprefix $(DESIGN_ROOT)/src/,$(SRC_FILES)) $(EXTRA_SRCS)
 READ_CELLS :=
-BUILD     := $(FPGA_DIR)build/$(TT_TOP)
+BUILD     := $(FPGA_DIR)build/$(TT_TOP)$(BUILD_TAG)
 endif
 ifeq ($(TARGET),pico)
 WRAP_SRCS := $(FPGA_DIR)tangnano20k_pico_top.v
@@ -69,7 +74,7 @@ info:
 
 $(BUILD)/top.json: $(DUT_SRCS) $(WRAP_SRCS) $(DESIGN_ROOT)/info.yaml | check_netlist $(BUILD)
 	yosys -q -l $(BUILD)/yosys.log -D TT_TOP=$(TT_TOP) \
-	  -p "$(READ_CELLS) read_verilog $(DUT_SRCS) $(WRAP_SRCS); $(WRAP_PARAMS) synth_gowin -top $(WRAP_TOP) -json $@"
+	  -p "$(READ_CELLS) read_verilog $(DUT_SRCS) $(WRAP_SRCS); $(CHPARAM) $(WRAP_PARAMS) synth_gowin -top $(WRAP_TOP) -json $@"
 
 $(BUILD)/pnr.json: $(BUILD)/top.json $(CST)
 	nextpnr-himbaechel -q -l $(BUILD)/nextpnr.log --json $< --write $@ \

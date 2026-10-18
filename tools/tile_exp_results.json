@@ -1,0 +1,269 @@
+{
+ "hash_k8_2x2": {
+  "experiment": {
+   "K": 8,
+   "branch": "local:sha3-only",
+   "core": "ring",
+   "flow": "branch",
+   "tiles": "2x2",
+   "top": "own"
+  },
+  "started": "2026-10-18 11:03",
+  "tests": {
+   "failed": [],
+   "ran": true,
+   "tests": 4
+  }
+ },
+ "hash_k8_3x2": {
+  "experiment": {
+   "K": 8,
+   "branch": "local:sha3-only",
+   "core": "ring",
+   "flow": "branch",
+   "tiles": "3x2",
+   "top": "own"
+  },
+  "started": "2026-10-18 11:04",
+  "tests": {
+   "failed": [],
+   "ran": true,
+   "tests": 4
+  }
+ },
+ "ntt_2x2": {
+  "experiment": {
+   "K": null,
+   "branch": "main",
+   "core": null,
+   "flow": "default",
+   "tiles": "2x2",
+   "top": "ntt"
+  },
+  "fits": true,
+  "harden_min": 5.4,
+  "harden_rc": 0,
+  "metrics": {
+   "antenna__violating__nets": 0,
+   "design__instance__area__stdcell": 38127.8,
+   "design__instance__utilization": 0.525433,
+   "design__lvs_error__count": 0,
+   "design__max_slew_violation__count__corner:max_ss_100C_1v60": 1242,
+   "hold_buffers": "[INFO RSZ-0032] Inserted 190 hold buffers.",
+   "last_step": "72-misc-reportmanufacturability",
+   "magic__drc_error__count": 0,
+   "route__drc_errors": 0,
+   "synth_area": 31799.248,
+   "synth_cells": 3064,
+   "timing__hold__ws": 0.10975715091894828,
+   "timing__hold_vio__count": 0,
+   "timing__setup__ws__corner:max_ss_100C_1v60": 1.4066064267037954,
+   "timing__setup__ws__corner:nom_tt_025C_1v80": 10.464248430616443,
+   "timing__setup_vio__count": 0
+  },
+  "started": "2026-10-18 09:43",
+  "tests": null
+ },
+ "sha_k2_2x2": {
+  "experiment": {
+   "K": 2,
+   "branch": "sha3-4x2",
+   "core": "ring",
+   "flow": "relaxed",
+   "tiles": "2x2",
+   "top": "hash"
+  },
+  "fits": true,
+  "harden_min": 5.8,
+  "harden_rc": 0,
+  "metrics": {
+   "antenna__violating__nets": 0,
+   "design__instance__area__stdcell": 47249.1,
+   "design__instance__utilization": 0.651131,
+   "design__lvs_error__count": 0,
+   "design__max_slew_violation__count__corner:max_ss_100C_1v60": 598,
+   "last_step": "72-misc-reportmanufacturability",
+   "magic__drc_error__count": 0,
+   "route__drc_errors": 0,
+   "synth_area": 38292.976,
+   "synth_cells": 2535,
+   "timing__hold__ws": 0.02564531992687183,
+   "timing__hold_vio__count": 0,
+   "timing__setup__ws__corner:max_ss_100C_1v60": 9.926708624956548,
+   "timing__setup__ws__corner:nom_tt_025C_1v80": 13.679836317594404,
+   "timing__setup_vio__count": 0
+  },
+  "started": "2026-10-18 09:24",
+  "tests": {
+   "failed": [
+    "test_hash_algos"
+   ],
+   "ran": true,
+   "tests": 1
+  }
+ },
+ "sha_k4_2x2": {
+  "experiment": {
+   "K": 4,
+   "branch": "sha3-4x2",
+   "core": "ring",
+   "flow": "relaxed",
+   "tiles": "2x2",
+   "top": "hash"
+  },
+  "started": "2026-10-18 10:33",
+  "tests": {
+   "failed": [
+    "test_hash_algos"
+   ],
+   "ran": true,
+   "tests": 1
+  }
+ },
+ "sha_k4_2x2_d65": {
+  "experiment": {
+   "K": 4,
+   "branch": "sha3-4x2",
+   "core": "ring",
+   "flow": "relaxed:d65",
+   "tiles": "2x2",
+   "top": "hash"
+  },
+  "started": "2026-10-18 09:45",
+  "tests": {
+   "failed": [
+    "test_hash_algos"
+   ],
+   "ran": true,
+   "tests": 1
+  }
+ },
+ "sha_k4_2x2_d70": {
+  "experiment": {
+   "K": 4,
+   "branch": "sha3-4x2",
+   "core": "ring",
+   "flow": "relaxed:d70",
+   "tiles": "2x2",
+   "top": "hash"
+  },
+  "started": "2026-10-18 09:45",
+  "tests": {
+   "failed": [
+    "test_hash_algos"
+   ],
+   "ran": true,
+   "tests": 1
+  }
+ },
+ "sha_k8_2x2": {
+  "experiment": {
+   "K": 8,
+   "branch": "sha3-4x2",
+   "core": "ring",
+   "flow": "relaxed",
+   "tiles": "2x2",
+   "top": "hash"
+  },
+  "fits": false,
+  "harden_rc": "stopped",
+  "metrics": {
+   "last_step": "44-openroad-detailedrouting"
+  },
+  "note": "stopped by hand after 60 min in detailed routing: 18,931 -> 9,660 violations in 5 iterations (congested); the hash-only hash_k8_2x2 run asks the same question",
+  "started": "2026-10-18 09:24",
+  "tests": {
+   "failed": [],
+   "ran": true,
+   "tests": 1
+  }
+ },
+ "sha_k8_2x2_def": {
+  "experiment": {
+   "K": 8,
+   "branch": "sha3-4x2",
+   "core": "ring",
+   "flow": "default",
+   "tiles": "2x2",
+   "top": "hash"
+  },
+  "fits": false,
+  "harden_min": 2.9,
+  "harden_rc": 1,
+  "metrics": {
+   "first_error": "[ERROR DPL-0036] Detailed placement failed.",
+   "last_step": "35-openroad-cts",
+   "synth_area": 57918.048,
+   "synth_cells": 3562
+  },
+  "started": "2026-10-18 09:30",
+  "tests": {
+   "failed": [],
+   "ran": true,
+   "tests": 1
+  }
+ },
+ "sha_k8_3x2": {
+  "experiment": {
+   "K": 8,
+   "branch": "sha3-4x2",
+   "core": "ring",
+   "flow": "relaxed",
+   "tiles": "3x2",
+   "top": "hash"
+  },
+  "fits": false,
+  "harden_min": 15.9,
+  "harden_rc": 1,
+  "metrics": {
+   "hold_buffers": "[INFO RSZ-0032] Inserted 3 hold buffers.",
+   "last_step": "44-openroad-detailedrouting",
+   "synth_area": 46948.7776,
+   "synth_cells": 3803
+  },
+  "started": "2026-10-18 09:24",
+  "tests": {
+   "failed": [],
+   "ran": true,
+   "tests": 1
+  }
+ },
+ "sha_k8_3x2_def": {
+  "experiment": {
+   "K": 8,
+   "branch": "sha3-4x2",
+   "core": "ring",
+   "flow": "default",
+   "tiles": "3x2",
+   "top": "hash"
+  },
+  "started": "2026-10-18 09:24",
+  "tests": {
+   "failed": [],
+   "ran": true,
+   "tests": 1
+  }
+ },
+ "sha_lat_3x2": {
+  "experiment": {
+   "K": 8,
+   "branch": "sha3-latch",
+   "core": "lat",
+   "flow": "latch",
+   "tiles": "3x2",
+   "top": "hash"
+  },
+  "fits": false,
+  "harden_rc": "stopped",
+  "metrics": {
+   "last_step": "37-openroad-resizertimingpostcts"
+  },
+  "note": "stopped by hand after 75 min in post-CTS timing repair with an empty step log (no progress); the latch core's loops stall the resizer",
+  "started": "2026-10-18 09:24",
+  "tests": {
+   "failed": [],
+   "ran": true,
+   "tests": 1
+  }
+ }
+}

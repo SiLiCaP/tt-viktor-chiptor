@@ -25,3 +25,7 @@ sim/arch_explore_rtl/results.xml
 sim/arch_explore_rtl/sim_build_lat/
 fpga/sim_pico/sim_build/
 fpga/sim_pico/results.xml
+tools/mlkem_profile/mlkem.elf
+fpga/sim_variant/sim_build/
+fpga/sim_variant/results_*.xml
+fpga/sim_variant/log_*.txt
