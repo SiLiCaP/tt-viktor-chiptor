@@ -189,8 +189,11 @@ same 42 jobs pass too. Rig result: **42/42 bit-exact at 1.04, 3.38, 6.75 and 13.
 
 With the hash-only chip loaded (above), `python3 host/sha3_demo.py` serves http://localhost:8080. It uses the
 Pico on /dev/ttyACM0 when present, or `--port /dev/ttyUSB1` for the Tang Nano alone, or `--sim` for a
-pin-level Python model of the chip. It refuses to start if the FPGA doesn't answer like the hash chip (the
-Tang loses its image when power-cycled). `--check` runs the 42-job self-test and one key exchange, then exits.
+pin-level Python model of the chip. If the FPGA doesn't answer like the hash chip (the Tang loses its image
+when power-cycled), the script loads it itself with openFPGALoader, building the bitstream first if needed
+(about 2 minutes). `--flash` forces a reload, `--no-flash` never touches the FPGA. `--check` runs the 42-job
+self-test and one key exchange, then exits. It runs from a plain shell: without pyserial it restarts itself
+under the OSS CAD Suite's Python.
 
 - **ML-KEM-512 map:** the block diagram of KeyGen, Encaps and Decaps. Each block is marked chip or RP2350,
   lights up while it runs (pick a slow pace), and opens its hash calls when clicked. A timeline shows the

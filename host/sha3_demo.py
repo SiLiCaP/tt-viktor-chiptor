@@ -4,9 +4,11 @@ on the Pico 2 W + Tang Nano rig, with a live block diagram of which step runs wh
     python host/sha3_demo.py                       # the rig: Pico 2 W on /dev/ttyACM0 (auto), chip in the Tang Nano
     python host/sha3_demo.py --port /dev/ttyUSB1   # the Tang Nano alone over its USB UART
     python host/sha3_demo.py --sim                 # pin-level Python model of the chip, no board needed
+    (on the rig the script loads the hash chip into the FPGA itself when it isn't there: --flash forces it,
+     --no-flash never touches the FPGA; a missing bitstream is built first, about 2 minutes)
     then open http://localhost:8080
 
-The FPGA must hold the hash-only chip (docs/PICO_TANG_RIG.md, "The hash-only chip on the rig"). The PC plays the
+The FPGA holds the hash-only chip (docs/PICO_TANG_RIG.md, "The hash-only chip on the rig"). The PC plays the
 RP2350: it runs ML-KEM-512 and sends every SHA3-256 (H), SHA3-512 (G), SHAKE256 (J, PRF) and SHAKE128 (XOF) call to
 the chip as pin words; the PRF's SamplePolyCBD also runs on the chip (BURST_CBD). The NTT, matrix products,
 rejection sampling and encoding stay on the PC / RP2350, as on the real board. Every result is checked against
@@ -686,6 +688,66 @@ def perf_model():
     return {"rows": out, "ops": ops}
 
 
+# ---------------- loading the chip into the Tang Nano ----------------
+OSS = os.path.expanduser("~/tools/oss-cad-suite")
+SHA3_TREE = os.path.expanduser("~/tools/work/br/sha3-only")          # worktree of chipathon-2026 branch sha3-only
+
+
+def tool(name):
+    """A tool from the PATH, else from the OSS CAD Suite (so the script runs without sourcing it)."""
+    import shutil
+    return shutil.which(name) or os.path.join(OSS, "bin", name)
+
+
+def bitstream(mode):
+    return os.path.join(ROOT, "fpga", "build", f"tt_um_NTT_Core_hashonly_k8{'_pico' if mode == 'pico' else ''}", "top.fs")
+
+
+def build_bitstream(mode):
+    """Synthesize the hash-only chip for the rig (about 2 minutes), from the sha3-only branch."""
+    import subprocess
+    tree = SHA3_TREE
+    if not os.path.isdir(tree):
+        team = os.path.join(os.path.dirname(ROOT), "chipathon-2026")
+        print(f"adding a worktree of branch sha3-only at {tree}")
+        subprocess.run(["git", "-C", team, "fetch", "-q", "origin", "sha3-only"], check=False)
+        subprocess.run(["git", "-C", team, "worktree", "add", tree, "sha3-only"], check=True)
+    env = dict(os.environ, PATH=f"{os.path.join(OSS, 'bin')}:{os.environ['PATH']}")
+    cmd = ["make", "-C", os.path.join(ROOT, "fpga"), "GL=0", f"DESIGN_ROOT={tree}", "BUILD_TAG=_hashonly_k8",
+           "CHPARAM=chparam -set CLOCK_GATING 0 keccak_ring;"] + (["TARGET=pico"] if mode == "pico" else [])
+    print("building the hash chip for the FPGA (about 2 minutes) …")
+    subprocess.run(cmd, check=True, env=env, stdout=subprocess.DEVNULL)
+
+
+def flash(mode, tries=3):
+    """Load the hash chip into the Tang Nano's FPGA (SRAM: lost at power-off). The board's USB debugger
+    sometimes stalls a transfer, so each try has a timeout and a retry."""
+    import subprocess
+    fs = bitstream(mode)
+    if not os.path.exists(fs):
+        build_bitstream(mode)
+    for i in range(tries):
+        print(f"loading the hash chip into the FPGA ({os.path.relpath(fs, ROOT)}) …")
+        try:
+            r = subprocess.run([tool("openFPGALoader"), "-b", "tangnano20k", fs], capture_output=True, text=True,
+                               timeout=40)
+            if r.returncode == 0:
+                time.sleep(0.5)
+                return
+            print(r.stdout[-300:] + r.stderr[-300:])
+        except subprocess.TimeoutExpired:
+            print("the Tang Nano's USB debugger stalled; retrying")
+    sys.exit("could not load the FPGA: unplug and replug the Tang Nano's USB cable, then run this again")
+
+
+def holds_hash_chip(emu):
+    probe = HashJob("sha3_256", b"abc", 8, burst=True)
+    w, sq = probe.words()
+    emu.set_inputs(0, 0)
+    emu.reset(10)
+    return probe.collect([c[0] for c in emu.run_stream(w)], sq) == probe.expected()
+
+
 def make_handler(app):
     def page():
         return open(os.path.join(HERE, "sha3_demo.html"), "rb").read()
@@ -728,11 +790,19 @@ def make_handler(app):
 
 
 def main():
+    try:
+        import serial  # noqa: F401
+    except ImportError:                       # system Python without pyserial: rerun under the OSS CAD Suite's
+        py = os.path.join(OSS, "bin", "tabbypy3")
+        if os.path.exists(py) and "--sim" not in sys.argv:
+            os.execv(py, [py] + sys.argv)
     ap = argparse.ArgumentParser(description=__doc__, formatter_class=argparse.RawDescriptionHelpFormatter)
     ap.add_argument("--sim", action="store_true", help="pin-level Python model of the chip instead of the board")
     ap.add_argument("--port", help="serial port: the Pico 2 W (/dev/ttyACM0, default if present) or the Tang Nano")
     ap.add_argument("--http", type=int, default=8080)
     ap.add_argument("--check", action="store_true", help="run the self-test and a key exchange, print, exit")
+    ap.add_argument("--flash", action="store_true", help="always load the hash chip into the FPGA first")
+    ap.add_argument("--no-flash", action="store_true", help="never touch the FPGA (default: load it if needed)")
     a = ap.parse_args()
     if a.sim:
         emu, source, real, mode = ChipModel(), "pin-level model of the hash chip (no board)", False, "sim"
@@ -745,13 +815,15 @@ def main():
         emu.set_inputs(0, 0)              # pass all 42 hash jobs at 13.5 MHz (docs/PICO_TANG_RIG.md)
         emu.reset(10)
         mode = "pico" if "ACM" in emu.port else "tang"
-        probe = HashJob("sha3_256", b"abc", 8, burst=True)
-        w, sq = probe.words()
-        if probe.collect([c[0] for c in emu.run_stream(w)], sq) != probe.expected():
-            sys.exit(f"{emu.port} answers, but the FPGA does not hold the hash-only chip (it loses its image when "
-                     f"power-cycled). Load it:\n  make -C fpga prog {'TARGET=pico ' if mode == 'pico' else ''}GL=0 "
-                     f"DESIGN_ROOT=~/tools/work/br/sha3-only BUILD_TAG=_hashonly_k8 "
-                     f"CHPARAM='chparam -set CLOCK_GATING 0 keccak_ring;'")
+        if a.flash or (not a.no_flash and not holds_hash_chip(emu)):
+            flash(mode)
+            emu.set_div(1)
+            if not holds_hash_chip(emu):
+                sys.exit("the FPGA is loaded but does not answer like the hash chip: check the rig's wiring "
+                         "(python3 tools/rig_pincheck.py)")
+        elif not holds_hash_chip(emu):
+            sys.exit(f"{emu.port} answers, but the FPGA does not hold the hash chip; run without --no-flash")
+        print("hash chip on the FPGA: ok")
         source = (f"Pico 2 W on {emu.port} → 26 wires → Tang Nano" if mode == "pico"
                   else f"Tang Nano on {emu.port}") + " · hash-only chip (sha3-only, RTL)"
         real = True
