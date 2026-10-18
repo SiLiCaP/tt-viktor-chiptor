@@ -185,6 +185,23 @@ through Burst CBD (η = 2 and 3). Each is checked against hashlib or FIPS 203 Sa
 must stay 0 on every clock where no byte is due. Through the Tang Nano alone (USB build, `--port /dev/ttyUSB1`) the
 same 42 jobs pass too. Rig result: **42/42 bit-exact at 1.04, 3.38, 6.75 and 13.5 MHz**, the top of the rig's clock range, and `uo_out` is 0 on every clock where no byte is due. All 48,676 clocks take 1.9 s through the TTE1 bridge.
 
+### The SHA-3 demo website
+
+With the hash-only chip loaded (above), `python3 host/sha3_demo.py` serves http://localhost:8080. It uses the
+Pico on /dev/ttyACM0 when present, or `--port /dev/ttyUSB1` for the Tang Nano alone, or `--sim` for a
+pin-level Python model of the chip. It refuses to start if the FPGA doesn't answer like the hash chip (the
+Tang loses its image when power-cycled). `--check` runs the 42-job self-test and one key exchange, then exits.
+
+- **ML-KEM-512 map:** the block diagram of KeyGen, Encaps and Decaps. Each block is marked chip or RP2350,
+  lights up while it runs (pick a slow pace), and opens its hash calls when clicked. A timeline shows the
+  exchange on the Tiny Tapeout board (model: 3.18 ms) or as measured on the rig, with a replay.
+- **The rig:** every hash call's LOAD / RUN / READ_CAP bytes and times, animated.
+- **The chip / Hash on the chip / Performance:** pinout and commands, any text through any of the four
+  functions (checked against hashlib), and the route model's numbers.
+
+Measured on Oct 18, 2026: one exchange is 32 hash calls and about 42,900 chip clocks. It takes 1.6 s on the
+rig, with the keys identical to pure-software FIPS 203 and every call equal to hashlib.
+
 ## Bring-up
 
 Open the console with `python3 -m serial.tools.miniterm /dev/ttyACM0` and type:
