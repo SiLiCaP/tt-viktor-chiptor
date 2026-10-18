@@ -189,6 +189,67 @@ class RigTap:
         self.hist = self.hist[-30:]
         return caps
 
+    def run_job(self, words, need):
+        """Fast path for one hash call: LOAD only the words that differ from the bridge's RAM (a shadow copy is
+        kept here), RUN, and READ_CAP only the clocks whose output is needed. Returns {clock: uo_out}."""
+        if not hasattr(self.emu, "read_cap"):                     # the Python model: no USB to save
+            caps = self.emu.run_stream(words)
+            self._record(words, {"tx": 0.0, "calc": 0.0, "rx": 0.0}, 2 * len(words), 3 * len(words), caps)
+            return {k: caps[k][0] for k in need if k < len(caps)}
+        if not hasattr(self, "shadow"):
+            self.shadow = [None] * DEPTH
+        out, t = {}, {"tx": 0.0, "calc": 0.0, "rx": 0.0}
+        sent = got = 0
+        for base in range(0, len(words), DEPTH):
+            c = words[base:base + DEPTH]
+            n, i = len(c), 0
+            t0 = time.perf_counter()
+            while i < n:
+                if self.shadow[i] == c[i]:
+                    i += 1
+                    continue
+                last, j = i, i
+                while j < n and j - last <= 24:
+                    if self.shadow[j] != c[j]:
+                        last = j
+                    j += 1
+                self.emu.load(i, c[i:last + 1])
+                self.shadow[i:last + 1] = c[i:last + 1]
+                sent += 2 * (last + 1 - i) + 5
+                i = last + 1
+            t1 = time.perf_counter()
+            self.emu.run(n)
+            t2 = time.perf_counter()
+            idx = sorted(k - base for k in need if base <= k < base + n)
+            groups = []
+            for k in idx:
+                if groups and k - groups[-1][1] <= 32:
+                    groups[-1][1] = k
+                else:
+                    groups.append([k, k])
+            for a, b in groups:
+                for o, cap in enumerate(self.emu.read_cap(a, b - a + 1)):
+                    out[base + a + o] = cap[0]
+                got += 3 * (b - a + 1) + 2
+            t3 = time.perf_counter()
+            t["tx"] += t1 - t0
+            t["calc"] += t2 - t1
+            t["rx"] += t3 - t2
+        caps = [(out.get(k, 0), 0, 0) for k in range(len(words))]
+        self._record(words, t, sent, got, caps)
+        return out
+
+    def _record(self, words, t, sent, got, caps):
+        first = next((i for i, c in enumerate(caps) if c[0]), 0)
+        self.seq += 1
+        for k, v in (("out", sent), ("in", got), ("cmds", 3), ("batches", 1), ("clocks", len(words))):
+            self.totals[k] += v
+        self.hist.append({"seq": self.seq, "op": self.label or "hash", "words": len(words), "t": t,
+                          "load": enc_load(0, words[:8]).hex(), "load_n": sent, "run": enc_run(len(words)).hex(),
+                          "rd": enc_read_cap(first, 8).hex(), "cap_n": got, "cap_first": first,
+                          "cap_res": bytes(c[0] for c in caps[first:first + 16]).hex()})
+        self.hist = self.hist[-30:]
+
     def state(self):
         return {"seq": self.seq, "hist": self.hist[-12:], "totals": self.totals, "real": self.real,
                 "mode": self.mode, "port": getattr(self.emu, "port", "?"), "f_dut": ChipModel.F_DUT}
@@ -208,9 +269,9 @@ class HashChip:
         words, sq = job.words()
         self.rig.label = label or name
         t = time.perf_counter()
-        caps = self.rig.run_stream(words)
+        got_uo = self.rig.run_job(words, [k + 2 for k in sq])
         wall = time.perf_counter() - t
-        samples = [c[0] for c in caps]
+        samples = [got_uo.get(k, 0) for k in range(len(words))]
         got = job.collect(samples, sq)
         ok = got == job.expected()
         self.mismatch += not ok

@@ -83,6 +83,11 @@ footer { position: fixed; left: 0; right: 0; bottom: 0; height: 22px; background
 footer .brand { font-weight: 700; color: var(--ink-2); letter-spacing: .02em; }
 footer i { display: inline-block; width: 8px; height: 8px; background: var(--chip); border-radius: 1px; }
 .tip { position: fixed; pointer-events: none; background: var(--ink); color: var(--surface); font-size: 12px; padding: 4px 8px; border-radius: 6px; display: none; z-index: 20; max-width: 360px; }
+.hero-row { display: grid; grid-template-columns: 1fr 1fr 1fr; gap: 18px; align-items: end; }
+@media (max-width: 900px) { .hero-row { grid-template-columns: 1fr; } }
+.hero-k { font-size: 12px; text-transform: uppercase; letter-spacing: .08em; color: var(--ink-3); font-weight: 700; }
+.hero-v { font-family: Archivo, system-ui, sans-serif; font-size: 44px; font-weight: 800; line-height: 1.05; font-variant-numeric: tabular-nums; }
+.hbar { height: 12px; border-radius: 6px; margin-top: 8px; }
 .where { display: inline-block; font-size: 11px; font-weight: 700; padding: 1px 7px; border-radius: 4px; color: #fff; }
 .where.chip { background: var(--chip); } .where.rp { background: var(--rp); }
 .calls td:nth-child(2), .calls td:nth-child(3) { font-family: ui-monospace, Menlo, monospace; }
@@ -118,9 +123,10 @@ svg text { font-family: system-ui, -apple-system, "Segoe UI", Roboto, sans-serif
     arithmetic that stays on the microcontroller (here the PC plays it). Run it and watch which step runs, when, and where.</p>
   <div class="actions">
     <button class="btn red" data-act="exchange">▶ Run a key exchange on the chip</button>
-    <label class="stat">pace <select id="slowmo"><option value="0.35" selected>slow (0.35 s per step)</option><option value="0.9">slower (0.9 s)</option><option value="0">full speed</option></select></label>
+    <label class="stat">pace <select id="slowmo"><option value="0" selected>full speed</option><option value="0.35">slow (0.35 s per step)</option><option value="0.9">slower (0.9 s)</option></select></label>
     <span class="muted" id="map-now"></span>
   </div>
+  <div class="card" id="hero" style="margin-bottom:14px"></div>
   <div class="grid g32 mapgrid">
     <div class="card"><h2>Block diagram</h2><svg id="map-svg" viewBox="0 0 960 640" width="100%" role="img" aria-label="ML-KEM-512 block diagram: key generation, encapsulation, decapsulation"></svg>
       <div class="legend"><span><i style="background:var(--chip)"></i>on our chip (SHA-3 / SHAKE, CBD)</span><span><i style="background:var(--rp)"></i>on the RP2350 (NTT, matrix, rejection sampling, encoding)</span><span>click a block for its data</span></div></div>
@@ -491,7 +497,21 @@ function drawPerf() { const P = data.perf || {}; const svg = $("p-bars"); svg.in
       return `<tr><td>${o}</td><td>${fmt(v.rp2350_alone_s)}</td><td>${(v.rp2350_hash_s / v.rp2350_alone_s * 100).toFixed(0)} %</td><td>${fmt(v.board_s)}</td><td>${fmt(v.wall_s)}</td><td>${n}</td></tr>`; }).join("") + `</tbody></table>`
     + `<p class="muted">“With the chip” is the board model of the run you just did, step by step (Timeline). “On this rig” is measured: every hash call crosses USB.</p>`; }
 
-function redrawAll() { drawPinStrip($("pins"), status.pins); drawMap(); drawStep(); drawResult(); drawTimeline(); drawRig(); drawPinout(); drawHash(); drawPerf(); }
+function drawHero() { const K = data.kem, P = data.perf || {}; const box = $("hero"); if (!P.rows) return;
+  let alone = P.rows[0].s, chip = P.rows[2].s, hAlone = null, hChip = null, src = "model, before a run";
+  if (K && K.ops && !K.partial && K.ops.decaps) { const ops = ["keygen", "encaps", "decaps"];
+    alone = ops.reduce((a, o) => a + K.ops[o].rp2350_alone_s, 0); chip = ops.reduce((a, o) => a + K.ops[o].board_s, 0);
+    hAlone = ops.reduce((a, o) => a + K.ops[o].rp2350_hash_s, 0);
+    hChip = ops.reduce((a, o) => a + K.ops[o].steps.filter(s => s.where !== "rp").reduce((b, s) => b + s.board_s, 0), 0);
+    src = `the run you just did: ${K.hash_calls} hash calls on the chip, every one checked`; }
+  const mx = Math.max(alone, chip);
+  box.innerHTML = `<h2>One ML-KEM-512 key exchange on the Tiny Tapeout board</h2><div class="hero-row">`
+    + `<div><div class="hero-k">RP2350 alone</div><div class="hero-v" style="color:var(--rp)">${fmt(alone)}</div><div class="hbar" style="background:var(--rp);width:${alone / mx * 100}%"></div></div>`
+    + `<div><div class="hero-k">RP2350 + our SHA-3 chip</div><div class="hero-v" style="color:var(--chip)">${fmt(chip)}</div><div class="hbar" style="background:var(--chip);width:${chip / mx * 100}%"></div></div>`
+    + `<div><div class="hero-k">speed-up</div><div class="hero-v">${(alone / chip).toFixed(2)}× faster</div>`
+    + (hAlone ? `<div class="muted" style="margin-top:6px">the hashing itself: <b>${fmt(hAlone)}</b> on the RP2350 → <b style="color:var(--chip)">${fmt(hChip)}</b> on our chip (${(hAlone / hChip).toFixed(1)}×)</div>` : "") + `</div></div>`
+    + `<p class="muted" style="margin:10px 0 0">RP2350 at 150 MHz with pqm4's optimized code (cited); chip at 50 MHz, its exact clock counts, with the RP2350's feed included · ${src}.</p>`; }
+function redrawAll() { drawHero(); drawPinStrip($("pins"), status.pins); drawMap(); drawStep(); drawResult(); drawTimeline(); drawRig(); drawPinout(); drawHash(); drawPerf(); }
 
 (function loop() { const onMap = $("t-map").classList.contains("on"), onRig = $("t-rig").classList.contains("on");
   if (onMap && (status.step || replayPlaying || status.busy === "exchange")) drawMap();
@@ -503,7 +523,7 @@ async function poll() {
   header();
   let changed = false;
   for (const s in status.ver) if (status.ver[s] !== ver[s]) { ver[s] = status.ver[s]; data[s] = await (await fetch("/api/data/" + s)).json(); changed = true; }
-  if (changed || status.step) { drawMap(); drawResult(); drawTimeline(); drawHash(); drawPerf(); if (sel) drawStep(); }
+  if (changed || status.step) { drawHero(); drawMap(); drawResult(); drawTimeline(); drawHash(); drawPerf(); if (sel) drawStep(); }
   drawPinStrip($("pins"), status.pins); }
 function header() { $("src").textContent = status.source;
   const st = status.step; $("busy").textContent = status.busy ? (st ? `${st.op}: ${st.title}` : `working: ${status.busy}`) : "idle"; $("busy").className = "badge" + (status.busy ? " live" : "");
