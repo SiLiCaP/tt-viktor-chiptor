@@ -1,4 +1,20 @@
 {
+ "hash_k16_3x2": {
+  "experiment": {
+   "K": 16,
+   "branch": "local:sha3-only",
+   "core": "ring",
+   "flow": "branch",
+   "tiles": "3x2",
+   "top": "own"
+  },
+  "started": "2026-10-18 11:58",
+  "tests": {
+   "failed": [],
+   "ran": true,
+   "tests": 4
+  }
+ },
  "hash_k8_2x2": {
   "experiment": {
    "K": 8,
@@ -8,6 +24,13 @@
    "tiles": "2x2",
    "top": "own"
   },
+  "fits": false,
+  "harden_rc": "stopped",
+  "metrics": {
+   "design__instance__utilization@cts": 0.836,
+   "last_step": "44-openroad-detailedrouting"
+  },
+  "note": "does not route: 83.6 % after CTS, global routing needed overflow iterations, detailed routing started at 23,058 violations; stopped",
   "started": "2026-10-18 11:03",
   "tests": {
    "failed": [],
