@@ -182,7 +182,8 @@ python3 host/test_variant.py --port /dev/ttyACM0 --hash 8 --hash-only
 
 It runs 42 jobs: 24 byte-squeeze (every algorithm at the rate edges), 12 bursts, and 6 ML-KEM PRF calls
 through Burst CBD (η = 2 and 3). Each is checked against hashlib or FIPS 203 SamplePolyCBD, and `uo_out`
-must stay 0 on every clock where no byte is due. Result: **42/42 bit-exact at 1.04, 3.38, 6.75 and 13.5 MHz**, the top of the rig's clock range, and `uo_out` is 0 on every clock where no byte is due. All 48,676 clocks take 1.9 s through the TTE1 bridge.
+must stay 0 on every clock where no byte is due. Through the Tang Nano alone (USB build, `--port /dev/ttyUSB1`) the
+same 42 jobs pass too. Rig result: **42/42 bit-exact at 1.04, 3.38, 6.75 and 13.5 MHz**, the top of the rig's clock range, and `uo_out` is 0 on every clock where no byte is due. All 48,676 clocks take 1.9 s through the TTE1 bridge.
 
 ## Bring-up
 
